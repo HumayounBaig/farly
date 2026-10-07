@@ -1,0 +1,130 @@
+import 'dart:convert';
+
+import '../models/remote_action.dart';
+
+/// Public webOS registration manifest. The signed block and signature are the
+/// values LG TVs already accept from third-party remotes; only the saved
+/// client key is added after the TV approves Farly.
+Map<String, dynamic> lgRegistration({String? clientKey}) {
+  return {
+    'type': 'register',
+    'id': 'register_0',
+    'payload': {
+      'forcePairing': false,
+      'pairingType': 'PROMPT',
+      'manifest': {
+        'appVersion': '1.1',
+        'manifestVersion': 1,
+        'permissions': [
+          'LAUNCH',
+          'LAUNCH_WEBAPP',
+          'APP_TO_APP',
+          'CLOSE',
+          'TEST_OPEN',
+          'TEST_PROTECTED',
+          'CONTROL_AUDIO',
+          'CONTROL_DISPLAY',
+          'CONTROL_INPUT_JOYSTICK',
+          'CONTROL_INPUT_MEDIA_RECORDING',
+          'CONTROL_INPUT_MEDIA_PLAYBACK',
+          'CONTROL_INPUT_TV',
+          'CONTROL_POWER',
+          'CONTROL_TV_SCREEN',
+          'READ_APP_STATUS',
+          'READ_CURRENT_CHANNEL',
+          'READ_INPUT_DEVICE_LIST',
+          'READ_NETWORK_STATE',
+          'READ_RUNNING_APPS',
+          'READ_TV_CHANNEL_LIST',
+          'WRITE_NOTIFICATION_TOAST',
+          'READ_POWER_STATE',
+          'READ_COUNTRY_INFO',
+          'CONTROL_INPUT_TEXT',
+          'CONTROL_MOUSE_AND_KEYBOARD',
+          'READ_INSTALLED_APPS',
+          'READ_SETTINGS',
+        ],
+        'signatures': [
+          {
+            'signatureVersion': 1,
+            'signature':
+                'eyJhbGdvcml0aG0iOiJSU0EtU0hBMjU2Iiwia2V5SWQiOiJ0ZXN0LXNpZ25pbm'
+                'ctY2VydCIsInNpZ25hdHVyZVZlcnNpb24iOjF9.hrVRgjCwXVvE2OOSpDZ58hR'
+                '+59aFNwYDyjQgKk3auukd7pcegmE2CzPCa0bJ0ZsRAcKkCTJrWo5iDzNhMBWRy'
+                'aMOv5zWSrthlf7G128qvIlpMT0YNY+n/FaOHE73uLrS/g7swl3/qH/BGFG2Hu4'
+                'RlL48eb3lLKqTt2xKHdCs6Cd4RMfJPYnzgvI4BNrFUKsjkcu+WD4OO2A27Pq1n'
+                '50cMchmcaXadJhGrOqH5YmHdOCj5NSHzJYrsW0HPlpuAx/ECMeIZYDh6RMqaFM'
+                '2DXzdKX9NmmyqzJ3o/0lkk/N97gfVRLW5hA29yeAwaCViZNCP8iC9aO0q9fQoj'
+                'oa7NQnAtw==',
+          },
+        ],
+        'signed': {
+          'appId': 'com.lge.test',
+          'created': '20140509',
+          'localizedAppNames': {
+            '': 'LG Remote App',
+            'ko-KR': '리모컨 앱',
+            'zxx-XX': 'ЛГ Rэмotэ AПП',
+          },
+          'localizedVendorNames': {'': 'LG Electronics'},
+          'permissions': [
+            'TEST_SECURE',
+            'CONTROL_INPUT_TEXT',
+            'CONTROL_MOUSE_AND_KEYBOARD',
+            'READ_INSTALLED_APPS',
+            'READ_LGE_SDX',
+            'READ_NOTIFICATIONS',
+            'SEARCH',
+            'WRITE_SETTINGS',
+            'WRITE_NOTIFICATION_ALERT',
+            'CONTROL_POWER',
+            'READ_CURRENT_CHANNEL',
+            'READ_RUNNING_APPS',
+            'READ_UPDATE_INFO',
+            'UPDATE_FROM_REMOTE_APP',
+            'READ_LGE_TV_INPUT_EVENTS',
+            'READ_TV_CURRENT_TIME',
+          ],
+          'serial': '2f930e2d2cfe083771f68e4fe7bb07',
+          'vendorId': 'com.lge',
+        },
+      },
+      if (clientKey != null && clientKey.isNotEmpty) 'client-key': clientKey,
+    },
+  };
+}
+
+String lgRegistrationText({String? clientKey}) =>
+    jsonEncode(lgRegistration(clientKey: clientKey));
+
+Map<String, dynamic> lgRequest(
+  String id,
+  String uri, [
+  Map<String, dynamic>? payload,
+]) {
+  return {
+    'type': 'request',
+    'id': id,
+    'uri': uri,
+    'payload': ?payload,
+  };
+}
+
+String? lgPointerButton(RemoteAction action) {
+  return switch (action) {
+    RemoteAction.up => 'UP',
+    RemoteAction.down => 'DOWN',
+    RemoteAction.left => 'LEFT',
+    RemoteAction.right => 'RIGHT',
+    RemoteAction.select => 'ENTER',
+    RemoteAction.back => 'BACK',
+    RemoteAction.home => 'HOME',
+    RemoteAction.play => 'PLAY',
+    RemoteAction.rewind => 'REWIND',
+    RemoteAction.forward => 'FASTFORWARD',
+    RemoteAction.input => 'MENU',
+    _ => null,
+  };
+}
+
+String lgPointerMessage(String button) => 'type:button\nname:$button\n\n';

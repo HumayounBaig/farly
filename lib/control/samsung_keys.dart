@@ -1,0 +1,52 @@
+import 'dart:convert';
+
+import '../models/remote_action.dart';
+
+String? samsungKey(RemoteAction action) {
+  return switch (action) {
+    RemoteAction.up => 'KEY_UP',
+    RemoteAction.down => 'KEY_DOWN',
+    RemoteAction.left => 'KEY_LEFT',
+    RemoteAction.right => 'KEY_RIGHT',
+    RemoteAction.select => 'KEY_ENTER',
+    RemoteAction.back => 'KEY_RETURN',
+    RemoteAction.home => 'KEY_HOME',
+    RemoteAction.volumeUp => 'KEY_VOLUP',
+    RemoteAction.volumeDown => 'KEY_VOLDOWN',
+    RemoteAction.mute => 'KEY_MUTE',
+    RemoteAction.power => 'KEY_POWER',
+    RemoteAction.play => 'KEY_PLAY',
+    RemoteAction.rewind => 'KEY_REWIND',
+    RemoteAction.forward => 'KEY_FF',
+    RemoteAction.input => 'KEY_SOURCE',
+  };
+}
+
+Map<String, dynamic> samsungKeyPayload(String key) {
+  return {
+    'method': 'ms.remote.control',
+    'params': {
+      'Cmd': 'Click',
+      'DataOfCmd': key,
+      'Option': 'false',
+      'TypeOfRemote': 'SendRemoteKey',
+    },
+  };
+}
+
+Uri samsungSocketUri({
+  required String host,
+  required bool secure,
+  String? token,
+}) {
+  return Uri(
+    scheme: secure ? 'wss' : 'ws',
+    host: host,
+    port: secure ? 8002 : 8001,
+    path: '/api/v2/channels/samsung.remote.control',
+    queryParameters: {
+      'name': base64Encode(utf8.encode('Farly')),
+      if (token != null && token.isNotEmpty) 'token': token,
+    },
+  );
+}

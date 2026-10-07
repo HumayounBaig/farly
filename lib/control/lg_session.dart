@@ -1,0 +1,229 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:web_socket_channel/io.dart';
+
+import '../models/farly_device.dart';
+import '../models/remote_action.dart';
+import 'lg_registration.dart';
+import 'remote_session.dart';
+
+class LgSession extends RemoteSession {
+  LgSession({required this.device, this.onCredentials});
+
+  FarlyDevice device;
+  final CredentialSink? onCredentials;
+  final _updates = SessionUpdates();
+  IOWebSocketChannel? _channel;
+  IOWebSocketChannel? _pointer;
+  StreamSubscription<dynamic>? _subscription;
+  var _command = 0;
+  var _muted = false;
+
+  @override
+  Stream<SessionUpdate> get updates => _updates.stream;
+
+  @override
+  Future<void> open() async {
+    final host = device.host;
+    if (host == null) {
+      _updates.add(
+        const SessionUpdate(
+          SessionPhase.failed,
+          detail: 'This LG TV has no address.',
+        ),
+      );
+      return;
+    }
+
+    IOWebSocketChannel? channel;
+    for (final secure in [false, true]) {
+      try {
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 4)
+          ..badCertificateCallback = (cert, peer, port) => peer == host;
+        final uri = Uri(
+          scheme: secure ? 'wss' : 'ws',
+          host: host,
+          port: secure ? 3001 : 3000,
+        );
+        final attempt = IOWebSocketChannel.connect(uri, customClient: client);
+        await attempt.ready.timeout(const Duration(seconds: 4));
+        channel = attempt;
+        break;
+      } catch (_) {
+        continue;
+      }
+    }
+
+    if (channel == null) {
+      _updates.add(
+        const SessionUpdate(
+          SessionPhase.failed,
+          detail: 'Farly could not reach this LG TV.',
+        ),
+      );
+      return;
+    }
+
+    _channel = channel;
+    final settled = Completer<void>();
+    _subscription = channel.stream.listen(
+      (data) => _onMessage(data, settled),
+      onError: (_) {
+        _updates.add(
+          const SessionUpdate(
+            SessionPhase.failed,
+            detail: 'The TV closed the connection.',
+          ),
+        );
+        if (!settled.isCompleted) settled.complete();
+      },
+    );
+    channel.sink.add(lgRegistrationText(clientKey: device.clientKey));
+    await settled.future.timeout(
+      const Duration(seconds: 20),
+      onTimeout: () {
+        _updates.add(
+          const SessionUpdate(
+            SessionPhase.waitingForTv,
+            detail: 'Accept Farly on the TV if it is asking.',
+          ),
+        );
+      },
+    );
+  }
+
+  void _onMessage(Object? data, Completer<void> settled) {
+    if (data is! String) return;
+    final decoded = jsonDecode(data);
+    if (decoded is! Map) return;
+    final type = decoded['type']?.toString() ?? '';
+    final payload = decoded['payload'];
+    final body = payload is Map ? payload : const <String, dynamic>{};
+
+    if (body['client-key'] is String) {
+      device = device.copyWith(clientKey: body['client-key'] as String);
+      onCredentials?.call(device);
+      _updates.add(
+        const SessionUpdate(SessionPhase.ready, detail: 'Connected'),
+      );
+      if (!settled.isCompleted) settled.complete();
+      _openPointer();
+      return;
+    }
+
+    if (type == 'registered') {
+      _updates.add(
+        const SessionUpdate(SessionPhase.ready, detail: 'Connected'),
+      );
+      if (!settled.isCompleted) settled.complete();
+      _openPointer();
+      return;
+    }
+
+    if (type == 'error') {
+      _updates.add(
+        const SessionUpdate(
+          SessionPhase.failed,
+          detail: 'The TV rejected the connection.',
+        ),
+      );
+      if (!settled.isCompleted) settled.complete();
+      return;
+    }
+
+    final socketPath = body['socketPath'];
+    if (socketPath is String && socketPath.isNotEmpty) {
+      _connectPointer(socketPath);
+      return;
+    }
+
+    if (body['pairingType'] != null || type == 'response') {
+      _updates.add(
+        const SessionUpdate(
+          SessionPhase.waitingForTv,
+          detail: 'Accept Farly on the TV.',
+        ),
+      );
+    }
+  }
+
+  void _openPointer() {
+    final channel = _channel;
+    if (channel == null) return;
+    _command += 1;
+    channel.sink.add(
+      jsonEncode(
+        lgRequest(
+          'pointer_$_command',
+          'ssap://com.webos.service.networkinput/getPointerInputSocket',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _connectPointer(String socketPath) async {
+    try {
+      final host = device.host;
+      final client = HttpClient()
+        ..badCertificateCallback = (cert, peer, port) => peer == host;
+      final channel = IOWebSocketChannel.connect(
+        Uri.parse(socketPath),
+        customClient: client,
+      );
+      await channel.ready.timeout(const Duration(seconds: 4));
+      _pointer = channel;
+    } catch (_) {
+      _pointer = null;
+    }
+  }
+
+  @override
+  Future<CommandResult> send(RemoteAction action) async {
+    final channel = _channel;
+    if (channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    try {
+      switch (action) {
+        case RemoteAction.power:
+          _request('ssap://system/turnOff');
+        case RemoteAction.volumeUp:
+          _request('ssap://audio/volumeUp');
+        case RemoteAction.volumeDown:
+          _request('ssap://audio/volumeDown');
+        case RemoteAction.mute:
+          _muted = !_muted;
+          _request('ssap://audio/setMute', {'mute': _muted});
+        default:
+          final button = lgPointerButton(action);
+          final pointer = _pointer;
+          if (button == null || pointer == null) {
+            return const CommandResult(
+              false,
+              'The TV has not opened button control yet.',
+            );
+          }
+          pointer.sink.add(lgPointerMessage(button));
+      }
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+  }
+
+  void _request(String uri, [Map<String, dynamic>? payload]) {
+    _command += 1;
+    _channel?.sink.add(jsonEncode(lgRequest('cmd_$_command', uri, payload)));
+  }
+
+  @override
+  Future<void> close() async {
+    await _subscription?.cancel();
+    await _pointer?.sink.close();
+    await _channel?.sink.close();
+    await _updates.close();
+  }
+}
