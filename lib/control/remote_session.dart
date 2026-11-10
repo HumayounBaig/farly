@@ -42,6 +42,9 @@ abstract class RemoteSession {
 
   Future<void> close();
 
+  /// Point this session at a device whose address may have changed.
+  void rebind(FarlyDevice device) {}
+
   bool supports(RemoteAction action) => true;
 
   /// Whether the phone can type into an on-screen field on this device.

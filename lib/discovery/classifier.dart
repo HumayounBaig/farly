@@ -126,6 +126,9 @@ FarlyDevice asAndroidTv(FarlyDevice cast) {
     descriptionUrl: cast.descriptionUrl,
     uid: cast.uid,
     source: cast.source,
+    icon: cast.icon,
+    nameLocked: cast.nameLocked,
+    hosts: cast.hosts,
   );
 }
 

@@ -138,6 +138,43 @@ void main() {
     expect(merged.single.lastSeen, seenAt);
   });
 
+  test('a TV that keeps its uid remembers old addresses after a move', () {
+    const saved = FarlyDevice(
+      id: 'androidTv@192.168.1.30',
+      name: 'TCL C6K',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.androidTv,
+      host: '192.168.1.30',
+      port: 6466,
+      token: 'cert',
+      clientKey: 'key',
+      uid: 'castid1234567890abcdef1234567890',
+    );
+    final merged = mergeDevices(
+      saved: [saved],
+      found: [
+        const FarlyDevice(
+          id: 'androidTv@192.168.1.57',
+          name: 'TCL C6K',
+          kind: DeviceKind.screen,
+          brand: DeviceBrand.androidTv,
+          host: '192.168.1.57',
+          port: 6466,
+          uid: 'castid1234567890abcdef1234567890',
+        ),
+      ],
+      seenAt: DateTime.utc(2026, 11, 10),
+    );
+    expect(merged, hasLength(1));
+    expect(merged.single.host, '192.168.1.57');
+    expect(merged.single.token, 'cert');
+    expect(merged.single.clientKey, 'key');
+    expect(
+      merged.single.candidateHosts,
+      containsAll(['192.168.1.57', '192.168.1.30']),
+    );
+  });
+
   test(
     'a locked name and icon survive a scan with a better announced name',
     () {

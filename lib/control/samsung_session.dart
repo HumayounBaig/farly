@@ -22,6 +22,9 @@ class SamsungSession extends RemoteSession {
   Stream<SessionUpdate> get updates => _updates.stream;
 
   @override
+  void rebind(FarlyDevice device) => this.device = device;
+
+  @override
   bool supports(RemoteAction action) => samsungKey(action) != null;
 
   @override

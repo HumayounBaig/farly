@@ -68,6 +68,104 @@ void main() {
     controller.dispose();
     await pending;
   });
+
+  test('relocate updates a saved TV that answered on a new address', () async {
+    const saved = FarlyDevice(
+      id: 'roku@192.168.1.20',
+      name: 'Den',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.roku,
+      host: '192.168.1.20',
+      uid: 'roku-yn00',
+    );
+    final model = RoomModel(
+      store: MemoryDeviceStore([saved]),
+      scanDevices: () async => [
+        const FarlyDevice(
+          id: 'roku@192.168.1.80',
+          name: 'Den',
+          kind: DeviceKind.screen,
+          brand: DeviceBrand.roku,
+          host: '192.168.1.80',
+          uid: 'roku-yn00',
+        ),
+      ],
+    );
+    await model.load();
+    final moved = await model.relocate(saved);
+    expect(moved?.host, '192.168.1.80');
+    expect(model.devices.single.host, '192.168.1.80');
+    expect(
+      model.devices.single.candidateHosts,
+      containsAll(['192.168.1.80', '192.168.1.20']),
+    );
+  });
+
+  test(
+    'remote tries a remembered address when the saved one is dead',
+    () async {
+      final opened = <String>[];
+      final device = FarlyDevice(
+        id: 'roku@192.168.1.20',
+        name: 'Den',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.roku,
+        host: '192.168.1.20',
+        hosts: const ['192.168.1.20', '192.168.1.80'],
+      );
+      final controller = RemoteController(
+        device: device,
+        onCredentials: (_) {},
+        sessions: (device, sink) => _HostAwareSession(opened),
+      );
+      await controller.connect();
+      expect(opened, ['192.168.1.20', '192.168.1.80']);
+      expect(controller.phase, SessionPhase.ready);
+      expect(controller.device.host, '192.168.1.80');
+      controller.dispose();
+    },
+  );
+}
+
+class _HostAwareSession extends RemoteSession {
+  _HostAwareSession(this.opened);
+
+  final List<String> opened;
+  FarlyDevice device = const FarlyDevice(
+    id: 'x',
+    name: 'x',
+    kind: DeviceKind.screen,
+    brand: DeviceBrand.roku,
+  );
+  final _updates = SessionUpdates();
+
+  @override
+  Stream<SessionUpdate> get updates => _updates.stream;
+
+  @override
+  void rebind(FarlyDevice next) => device = next;
+
+  @override
+  Future<void> open() async {
+    final host = device.host ?? '';
+    opened.add(host);
+    if (host == '192.168.1.80') {
+      _updates.add(
+        const SessionUpdate(SessionPhase.ready, detail: 'Connected'),
+      );
+      return;
+    }
+    _updates.add(
+      const SessionUpdate(SessionPhase.failed, detail: 'Unreachable'),
+    );
+  }
+
+  @override
+  Future<CommandResult> send(RemoteAction action) async =>
+      const CommandResult(true);
+
+  @override
+  Future<void> close() => _updates.close();
 }
 
 String _json(Map<String, dynamic> map) => jsonEncode(map);

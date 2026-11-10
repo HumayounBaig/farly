@@ -25,6 +25,9 @@ class LgSession extends RemoteSession {
   Stream<SessionUpdate> get updates => _updates.stream;
 
   @override
+  void rebind(FarlyDevice device) => this.device = device;
+
+  @override
   Future<void> open() async {
     final host = device.host;
     if (host == null) {

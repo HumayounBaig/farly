@@ -35,7 +35,7 @@ class RokuSession extends RemoteSession {
     : _client = client ?? http.Client(),
       _ownsClient = client == null;
 
-  final FarlyDevice device;
+  FarlyDevice device;
   final http.Client _client;
   final bool _ownsClient;
   final _updates = SessionUpdates();
@@ -47,6 +47,9 @@ class RokuSession extends RemoteSession {
 
   @override
   Stream<SessionUpdate> get updates => _updates.stream;
+
+  @override
+  void rebind(FarlyDevice device) => this.device = device;
 
   @override
   List<AppShortcut> get shortcuts => apps;

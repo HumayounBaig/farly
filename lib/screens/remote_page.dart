@@ -38,6 +38,7 @@ class _RemotePageState extends State<RemotePage> {
     device: widget.device,
     sessions: widget.sessions,
     onCredentials: widget.room.updateDevice,
+    relocate: widget.room.relocate,
   );
 
   @override

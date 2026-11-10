@@ -12,24 +12,130 @@ typedef SessionBuilder = RemoteSession Function(
   CredentialSink onCredentials,
 );
 
+/// Finds the same TV again after its address changed (band or AP hop).
+typedef DeviceRelocator = Future<FarlyDevice?> Function(FarlyDevice device);
+
 class RemoteController extends ChangeNotifier {
   RemoteController({
     required FarlyDevice device,
     required CredentialSink onCredentials,
     SessionBuilder? sessions,
-  }) : session = (sessions ?? buildSession)(device, onCredentials);
+    this.relocate,
+  }) : _device = device,
+       _onCredentials = onCredentials,
+       session = (sessions ?? buildSession)(device, onCredentials);
 
   final RemoteSession session;
+  final CredentialSink _onCredentials;
+  final DeviceRelocator? relocate;
+
+  FarlyDevice _device;
+  FarlyDevice get device => _device;
+
   SessionPhase phase = SessionPhase.connecting;
   String? detail;
   StreamSubscription<SessionUpdate>? _subscription;
+  var _opening = false;
+  var _recoveryUsed = false;
+  var _wasReady = false;
 
   Future<void> connect() async {
     _subscription = session.updates.listen((update) {
       phase = update.phase;
       detail = update.detail;
+      if (update.phase == SessionPhase.ready) {
+        _wasReady = true;
+        _recoveryUsed = false;
+      }
       _notify();
+      if (!_opening &&
+          _wasReady &&
+          !_recoveryUsed &&
+          update.phase == SessionPhase.failed &&
+          !_disposed) {
+        unawaited(_recoverAfterDrop());
+      }
     });
+    await _openAcrossHosts(allowRelocate: true);
+  }
+
+  Future<void> _recoverAfterDrop() async {
+    if (_disposed || _recoveryUsed || _opening) return;
+    _recoveryUsed = true;
+    detail = 'Connection dropped. Finding this TV again…';
+    _notify();
+    await _openAcrossHosts(allowRelocate: true);
+  }
+
+  Future<void> _openAcrossHosts({required bool allowRelocate}) async {
+    if (_opening) return;
+    _opening = true;
+    try {
+      final tried = <String>{};
+      final candidates = _device.candidateHosts;
+      if (candidates.isEmpty) {
+        // Preview and other host-less sessions still need a single open.
+        phase = SessionPhase.connecting;
+        detail ??= 'Connecting';
+        _notify();
+        try {
+          await session.open();
+        } catch (_) {
+          phase = SessionPhase.failed;
+          detail = 'Farly could not open a connection.';
+          _notify();
+        }
+        return;
+      }
+      for (var i = 0; i < candidates.length; i++) {
+        if (_disposed) return;
+        final host = candidates[i];
+        if (!tried.add(host)) continue;
+        if (i > 0) {
+          detail = 'Trying another address for this TV…';
+          _notify();
+        }
+        await _bindAndOpen(host);
+        if (_usable(phase)) {
+          _onCredentials(_device);
+          return;
+        }
+      }
+
+      if (!allowRelocate || relocate == null || _disposed) return;
+      detail = 'Looking for this TV on your Wi-Fi…';
+      _notify();
+      final found = await relocate!(_device);
+      if (_disposed || found?.host == null) return;
+      if (tried.contains(found!.host)) return;
+      await _bindAndOpen(found.host!);
+      if (_usable(phase)) {
+        _device = found.copyWith(
+          hosts: mergeHostHistory(
+            primary: found.host,
+            newer: found.candidateHosts,
+            older: tried.toList(),
+          ),
+        );
+        session.rebind(_device);
+        _onCredentials(_device);
+      }
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Future<void> _bindAndOpen(String host) async {
+    final next = _device.copyWith(
+      host: host,
+      id: FarlyDevice.idFor(_device.brand, host),
+      hosts: mergeHostHistory(primary: host, newer: _device.candidateHosts),
+    );
+    _device = next;
+    session.rebind(next);
+    phase = SessionPhase.connecting;
+    detail ??= 'Connecting';
+    _notify();
     try {
       await session.open();
     } catch (_) {
@@ -37,6 +143,13 @@ class RemoteController extends ChangeNotifier {
       detail = 'Farly could not open a connection.';
       _notify();
     }
+  }
+
+  static bool _usable(SessionPhase phase) {
+    return phase == SessionPhase.ready ||
+        phase == SessionPhase.pairing ||
+        phase == SessionPhase.waitingForTv ||
+        phase == SessionPhase.limited;
   }
 
   Future<void> send(RemoteAction action) async {
@@ -74,7 +187,10 @@ class RemoteController extends ChangeNotifier {
     }
   }
 
-  Future<void> retry() => session.retry();
+  Future<void> retry() async {
+    _recoveryUsed = false;
+    await _openAcrossHosts(allowRelocate: true);
+  }
 
   Future<void> launch(AppShortcut shortcut) async {
     if (phase != SessionPhase.ready && phase != SessionPhase.limited) {

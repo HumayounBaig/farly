@@ -143,6 +143,11 @@ FarlyDevice _combine(
   final host = found.host ?? saved.host;
   final credentials = _sameControl(saved, best) ? saved : null;
   final sameHost = saved.host == found.host;
+  final hosts = mergeHostHistory(
+    primary: host,
+    newer: [if (found.host != null) found.host!, ...found.hosts],
+    older: [if (saved.host != null) saved.host!, ...saved.hosts],
+  );
   return FarlyDevice(
     id: keepSaved
         ? (sameHost || host == null
@@ -163,6 +168,7 @@ FarlyDevice _combine(
     lastSeen: lastSeen,
     icon: saved.icon ?? found.icon,
     nameLocked: saved.nameLocked || found.nameLocked,
+    hosts: hosts,
   );
 }
 

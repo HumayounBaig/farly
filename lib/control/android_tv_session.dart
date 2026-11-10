@@ -85,6 +85,9 @@ class AndroidTvSession extends RemoteSession {
   }
 
   @override
+  void rebind(FarlyDevice device) => this.device = device;
+
+  @override
   Future<void> retry() => open();
 
   Future<bool> _connectRemote(String host) async {

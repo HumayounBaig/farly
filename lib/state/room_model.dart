@@ -106,12 +106,58 @@ class RoomModel extends ChangeNotifier {
   }
 
   Future<void> updateDevice(FarlyDevice device) async {
-    devices = [
-      for (final current in devices)
-        if (current.id == device.id) device else current,
-    ];
+    final index = devices.indexWhere(
+      (current) => current.id == device.id || sameDevice(current, device),
+    );
+    if (index < 0) {
+      devices = [...devices, device];
+    } else {
+      final previous = devices[index];
+      final merged = device.copyWith(
+        hosts: mergeHostHistory(
+          primary: device.host,
+          newer: device.candidateHosts,
+          older: previous.candidateHosts,
+        ),
+      );
+      devices = [
+        for (var i = 0; i < devices.length; i++)
+          if (i == index) merged else devices[i],
+      ];
+      if (lastConnectedId == previous.id && previous.id != merged.id) {
+        lastConnectedId = merged.id;
+        await store.writeLastConnected(merged.id);
+      }
+    }
     await store.write(devices);
     notifyListeners();
+  }
+
+  /// Scans once and returns the saved TV if it answered on a new address.
+  ///
+  /// Used when the phone hops between 2.4 GHz / 5 GHz access points and the
+  /// TV's DHCP lease moved.
+  Future<FarlyDevice?> relocate(FarlyDevice device) async {
+    if (!roomScanSupported) return null;
+    try {
+      final found = await _scanDevices();
+      if (found.isEmpty) return null;
+      final seenAt = DateTime.now();
+      await _apply(mergeDevices(saved: devices, found: found, seenAt: seenAt));
+      lastScanAt = seenAt;
+      notifyListeners();
+      final match = findDevice(devices, device);
+      if (match == null) return null;
+      if (match.host == null) return null;
+      if (match.host == device.host &&
+          match.candidateHosts.every(device.candidateHosts.contains)) {
+        // Same address we already tried; nothing new to open.
+        return null;
+      }
+      return match;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Remembers the device whose remote just connected, for the next launch.
