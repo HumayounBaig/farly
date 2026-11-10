@@ -34,6 +34,18 @@ Map<String, dynamic> samsungKeyPayload(String key) {
   };
 }
 
+/// Types [text] into the focused Samsung on-screen field.
+Map<String, dynamic> samsungTextPayload(String text) {
+  return {
+    'method': 'ms.remote.control',
+    'params': {
+      'Cmd': 'WriteString',
+      'DataOfCmd': text,
+      'TypeOfRemote': 'SendInputString',
+    },
+  };
+}
+
 Uri samsungSocketUri({
   required String host,
   required bool secure,

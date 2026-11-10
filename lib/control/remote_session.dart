@@ -5,7 +5,7 @@ import '../models/remote_action.dart';
 
 typedef CredentialSink = void Function(FarlyDevice device);
 
-enum SessionPhase { connecting, waitingForTv, ready, limited, failed }
+enum SessionPhase { connecting, waitingForTv, pairing, ready, limited, failed }
 
 class SessionUpdate {
   const SessionUpdate(this.phase, {this.detail});
@@ -44,11 +44,38 @@ abstract class RemoteSession {
 
   bool supports(RemoteAction action) => true;
 
+  /// Whether the phone can type into an on-screen field on this device.
+  bool get supportsText => false;
+
+  /// Types [text] into the focused field on the TV (search, PIN, password).
+  Future<CommandResult> sendText(String text) async {
+    return const CommandResult(false, 'This device cannot take typed text.');
+  }
+
+  /// Deletes one character in the focused TV text field.
+  Future<CommandResult> textBackspace() async => send(RemoteAction.back);
+
+  /// Submits the focused TV text field.
+  Future<CommandResult> textEnter() async => send(RemoteAction.select);
+
   List<AppShortcut> get shortcuts => const [];
 
   Future<CommandResult> launch(AppShortcut shortcut) async {
     return const CommandResult(false, 'This device cannot launch apps.');
   }
+
+  /// Answers [SessionPhase.pairing] with the code the TV shows.
+  Future<CommandResult> submitCode(String code) async {
+    return const CommandResult(
+      false,
+      'This device does not use a pairing code.',
+    );
+  }
+
+  /// Whether [retry] can run after the session fails.
+  bool get canRetry => false;
+
+  Future<void> retry() async {}
 }
 
 /// A session that explains itself instead of pretending to control a device.
@@ -75,6 +102,15 @@ class NotedSession extends RemoteSession {
   @override
   Future<CommandResult> send(RemoteAction action) async {
     if (preview) return CommandResult(false, 'Would send ${action.label}');
+    return CommandResult(false, detail);
+  }
+
+  @override
+  bool get supportsText => preview;
+
+  @override
+  Future<CommandResult> sendText(String text) async {
+    if (preview) return CommandResult(false, 'Would type “$text”');
     return CommandResult(false, detail);
   }
 

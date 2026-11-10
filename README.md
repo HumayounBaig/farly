@@ -1,5 +1,7 @@
 # Farly
 
+<img src="docs/farly-icon.png" width="96" alt="Farly icon">
+
 One tap scans the Wi-Fi for televisions and air conditioners, then opens a remote.
 
 ## Run
@@ -10,6 +12,14 @@ flutter run
 ```
 
 The browser build can show the pad, but it cannot scan a network. Discovery and control run on iOS and Android.
+
+## Icon
+
+The logo is drawn by `FarlyMarkPainter` in `lib/widgets/farly_mark.dart`. After changing it, regenerate the iOS, Android, and web icons:
+
+```bash
+flutter test tool/render_icons_test.dart
+```
 
 ## What this build controls
 

@@ -102,12 +102,7 @@ Map<String, dynamic> lgRequest(
   String uri, [
   Map<String, dynamic>? payload,
 ]) {
-  return {
-    'type': 'request',
-    'id': id,
-    'uri': uri,
-    'payload': ?payload,
-  };
+  return {'type': 'request', 'id': id, 'uri': uri, 'payload': ?payload};
 }
 
 String? lgPointerButton(RemoteAction action) {

@@ -44,24 +44,20 @@ extension DeviceBrandDetails on DeviceBrand {
   };
 
   bool get commandsReady => switch (this) {
-    DeviceBrand.samsung || DeviceBrand.lg || DeviceBrand.roku => true,
+    DeviceBrand.samsung ||
+    DeviceBrand.lg ||
+    DeviceBrand.roku ||
+    DeviceBrand.androidTv => true,
     _ => false,
   };
 
   /// Why Farly can see this device without driving it yet.
   String? get limitation => switch (this) {
-    DeviceBrand.androidTv =>
-      'Farly found this Android TV. It asks for a pairing code, and that handshake is not in this build yet.',
-    DeviceBrand.appleTv =>
-      'Farly found this Apple TV. Its pairing handshake is not in this build yet.',
-    DeviceBrand.chromecast =>
-      'Farly found this Cast device. It announces itself, but it does not accept remote buttons.',
-    DeviceBrand.sony =>
-      'Farly found this Sony TV. Its local control key is not in this build yet.',
-    DeviceBrand.broadlink || DeviceBrand.otherAc =>
-      'Farly found this on your network. Infrared and cloud air-conditioner commands are not in this build yet.',
-    DeviceBrand.unknown =>
-      'Farly can see this device, but it does not have a control path for it yet.',
+    DeviceBrand.appleTv => 'Farly found this Apple TV. Its pairing handshake is not in this build yet.',
+    DeviceBrand.chromecast => 'Farly found this Cast device. It announces itself, but it does not accept remote buttons.',
+    DeviceBrand.sony => 'Farly found this Sony TV. Its local control key is not in this build yet.',
+    DeviceBrand.broadlink || DeviceBrand.otherAc => 'Farly found this on your network. Infrared and cloud air-conditioner commands are not in this build yet.',
+    DeviceBrand.unknown => 'Farly can see this device, but it does not have a control path for it yet.',
     _ => null,
   };
 
@@ -92,8 +88,11 @@ class FarlyDevice {
     this.token,
     this.clientKey,
     this.descriptionUrl,
+    this.uid,
     this.source = 'scan',
     this.lastSeen,
+    this.icon,
+    this.nameLocked = false,
   });
 
   final String id;
@@ -105,8 +104,17 @@ class FarlyDevice {
   final String? token;
   final String? clientKey;
   final String? descriptionUrl;
+
+  /// The hardware identity a device announces, which survives a new address.
+  final String? uid;
   final String source;
   final DateTime? lastSeen;
+
+  /// Saved glyph id from [DeviceIcon], or null for the default TV/AC mark.
+  final String? icon;
+
+  /// When true, scans keep [name] instead of the TV's announced name.
+  final bool nameLocked;
 
   static String idFor(DeviceBrand brand, String host) => '${brand.name}@$host';
 
@@ -123,8 +131,13 @@ class FarlyDevice {
     String? token,
     String? clientKey,
     String? descriptionUrl,
+    String? uid,
     DateTime? lastSeen,
+    String? icon,
+    bool? nameLocked,
     bool clearToken = false,
+    bool clearClientKey = false,
+    bool clearIcon = false,
   }) {
     return FarlyDevice(
       id: id,
@@ -134,12 +147,18 @@ class FarlyDevice {
       host: host,
       port: port,
       token: clearToken ? null : token ?? this.token,
-      clientKey: clientKey ?? this.clientKey,
+      clientKey: clearClientKey ? null : clientKey ?? this.clientKey,
       descriptionUrl: descriptionUrl ?? this.descriptionUrl,
+      uid: uid ?? this.uid,
       source: source,
       lastSeen: lastSeen ?? this.lastSeen,
+      icon: clearIcon ? null : icon ?? this.icon,
+      nameLocked: nameLocked ?? this.nameLocked,
     );
   }
+
+  /// Whether the name is only the brand label, not the TV's own name.
+  bool get hasGenericName => name == brand.label;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -151,8 +170,11 @@ class FarlyDevice {
     'token': token,
     'clientKey': clientKey,
     'descriptionUrl': descriptionUrl,
+    'uid': uid,
     'source': source,
     'lastSeen': lastSeen?.toIso8601String(),
+    'icon': icon,
+    'nameLocked': nameLocked,
   };
 
   factory FarlyDevice.fromJson(Map<String, dynamic> json) {
@@ -166,12 +188,25 @@ class FarlyDevice {
       token: json['token'] as String?,
       clientKey: json['clientKey'] as String?,
       descriptionUrl: json['descriptionUrl'] as String?,
+      uid: json['uid'] as String?,
       source: json['source'] as String? ?? 'scan',
       lastSeen: json['lastSeen'] == null
           ? null
           : DateTime.tryParse(json['lastSeen'] as String),
+      icon: json['icon'] as String?,
+      nameLocked: json['nameLocked'] as bool? ?? false,
     );
   }
+}
+
+/// Cast ids and UPnP UUIDs are the same hex with or without dashes.
+String? normalizeUid(String? raw) {
+  final value = raw?.trim().toLowerCase();
+  if (value == null || value.isEmpty) return null;
+  if (RegExp(r'^[0-9a-f-]+$').hasMatch(value)) {
+    return value.replaceAll('-', '');
+  }
+  return value;
 }
 
 bool isIpv4Address(String value) {
