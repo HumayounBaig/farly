@@ -34,8 +34,32 @@ Future<List<FarlyDevice>> scanRoom() async {
     _broadlink(byHost),
     for (final type in _serviceTypes) _browse(type, byHost),
   ]);
+  await _promoteCastTvs(byHost);
   await _enrichNames(byHost);
   return byHost.values.toList();
+}
+
+/// Google TV sets often announce only Cast. If one also answers on the
+/// Android TV remote port, it can take remote buttons.
+Future<void> _promoteCastTvs(Map<String, FarlyDevice> byHost) async {
+  final casts = byHost.entries
+      .where((entry) => entry.value.brand == DeviceBrand.chromecast)
+      .toList();
+  await Future.wait(
+    casts.map((entry) async {
+      try {
+        final socket = await Socket.connect(
+          entry.key,
+          DeviceBrand.androidTv.defaultPort!,
+          timeout: const Duration(milliseconds: 800),
+        );
+        socket.destroy();
+        byHost[entry.key] = asAndroidTv(entry.value);
+      } catch (_) {
+        // A speaker or an older Chromecast.
+      }
+    }),
+  );
 }
 
 Future<void> _ssdp(Map<String, FarlyDevice> byHost) async {
@@ -43,13 +67,17 @@ Future<void> _ssdp(Map<String, FarlyDevice> byHost) async {
   try {
     socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
     socket.broadcastEnabled = true;
-    for (final target in _searchTargets) {
-      socket.send(
-        utf8.encode(msearch(target)),
-        InternetAddress('239.255.255.250'),
-        1900,
-      );
+    void search() {
+      for (final target in _searchTargets) {
+        socket?.send(
+          utf8.encode(msearch(target)),
+          InternetAddress('239.255.255.250'),
+          1900,
+        );
+      }
     }
+
+    search();
     socket.listen((event) {
       if (event != RawSocketEvent.read) return;
       final datagram = socket?.receive();
@@ -61,7 +89,10 @@ Future<void> _ssdp(Map<String, FarlyDevice> byHost) async {
       final device = classifySsdp(message);
       if (device != null) putBetterDevice(byHost, device);
     });
-    await Future<void>.delayed(const Duration(seconds: 3));
+    // UDP is lossy: send the batch twice inside the window.
+    await Future<void>.delayed(const Duration(seconds: 1));
+    search();
+    await Future<void>.delayed(const Duration(seconds: 2));
   } catch (_) {
     return;
   } finally {
@@ -79,7 +110,11 @@ Future<void> _browse(String type, Map<String, FarlyDevice> byHost) async {
     subscription = events.listen((event) {
       switch (event) {
         case BonsoirDiscoveryServiceFoundEvent():
-          event.service.resolve(discovery.serviceResolver);
+          unawaited(
+            event.service
+                .resolve(discovery.serviceResolver)
+                .catchError((Object _) {}),
+          );
         case BonsoirDiscoveryServiceResolvedEvent():
           final service = event.service;
           final device = classifyService(
@@ -118,7 +153,9 @@ Future<void> _broadlink(Map<String, FarlyDevice> byHost) async {
       localIp: localIp,
       localPort: socket.port,
     );
-    socket.send(packet, InternetAddress('255.255.255.255'), 80);
+    void hello() =>
+        socket?.send(packet, InternetAddress('255.255.255.255'), 80);
+    hello();
     socket.listen((event) {
       if (event != RawSocketEvent.read) return;
       final datagram = socket?.receive();
@@ -140,7 +177,9 @@ Future<void> _broadlink(Map<String, FarlyDevice> byHost) async {
         ),
       );
     });
-    await Future<void>.delayed(const Duration(seconds: 2));
+    await Future<void>.delayed(const Duration(seconds: 1));
+    hello();
+    await Future<void>.delayed(const Duration(seconds: 1));
   } catch (_) {
     return;
   } finally {
@@ -185,7 +224,9 @@ Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
   }
   if (uri == null) return null;
   try {
-    final response = await client.get(uri).timeout(const Duration(milliseconds: 800));
+    final response = await client
+        .get(uri)
+        .timeout(const Duration(milliseconds: 800));
     if (response.statusCode < 200 || response.statusCode >= 300) return null;
     for (final tag in tags) {
       final value = xmlTag(response.body, tag);

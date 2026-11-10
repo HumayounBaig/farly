@@ -22,7 +22,13 @@ class SamsungSession extends RemoteSession {
   Stream<SessionUpdate> get updates => _updates.stream;
 
   @override
+  void rebind(FarlyDevice device) => this.device = device;
+
+  @override
   bool supports(RemoteAction action) => samsungKey(action) != null;
+
+  @override
+  bool get supportsText => true;
 
   @override
   Future<void> open() async {
@@ -85,6 +91,15 @@ class SamsungSession extends RemoteSession {
         if (!ready.isCompleted) ready.complete();
       },
       onDone: () {
+        if (identical(_channel, channel)) {
+          _channel = null;
+          _updates.add(
+            const SessionUpdate(
+              SessionPhase.failed,
+              detail: 'The TV closed the connection. Tap Try again.',
+            ),
+          );
+        }
         if (!ready.isCompleted) ready.complete();
       },
     );
@@ -104,7 +119,12 @@ class SamsungSession extends RemoteSession {
 
   SessionUpdate? _interpret(Object? data) {
     if (data is! String) return null;
-    final decoded = jsonDecode(data);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(data);
+    } on FormatException {
+      return null;
+    }
     if (decoded is! Map) return null;
     final event = decoded['event']?.toString() ?? '';
     final body = decoded['data'];
@@ -138,6 +158,62 @@ class SamsungSession extends RemoteSession {
     } catch (_) {
       return const CommandResult(false, 'The key did not reach the TV.');
     }
+  }
+
+  @override
+  Future<CommandResult> sendText(String text) async {
+    final channel = _channel;
+    if (channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    if (text.isEmpty) {
+      return const CommandResult(false, 'Nothing to type.');
+    }
+    try {
+      channel.sink.add(jsonEncode(samsungTextPayload(text)));
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The text did not reach the TV.');
+    }
+  }
+
+  @override
+  Future<CommandResult> textBackspace() async {
+    final channel = _channel;
+    if (channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    try {
+      channel.sink.add(jsonEncode(samsungKeyPayload('KEY_BACKSPACE')));
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+  }
+
+  @override
+  Future<CommandResult> textEnter() async {
+    final channel = _channel;
+    if (channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    try {
+      channel.sink.add(jsonEncode(samsungKeyPayload('KEY_ENTER')));
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+  }
+
+  @override
+  bool get canRetry => true;
+
+  @override
+  Future<void> retry() async {
+    await _subscription?.cancel();
+    await _channel?.sink.close();
+    _channel = null;
+    await open();
   }
 
   @override

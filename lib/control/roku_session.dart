@@ -4,6 +4,12 @@ import '../models/farly_device.dart';
 import '../models/remote_action.dart';
 import 'remote_session.dart';
 
+/// Roku literal-key path for one typed character.
+String rokuLitPath(String character) {
+  final encoded = Uri.encodeComponent(character);
+  return 'Lit_$encoded';
+}
+
 String? rokuKey(RemoteAction action) {
   return switch (action) {
     RemoteAction.up => 'Up',
@@ -29,7 +35,7 @@ class RokuSession extends RemoteSession {
     : _client = client ?? http.Client(),
       _ownsClient = client == null;
 
-  final FarlyDevice device;
+  FarlyDevice device;
   final http.Client _client;
   final bool _ownsClient;
   final _updates = SessionUpdates();
@@ -43,10 +49,16 @@ class RokuSession extends RemoteSession {
   Stream<SessionUpdate> get updates => _updates.stream;
 
   @override
+  void rebind(FarlyDevice device) => this.device = device;
+
+  @override
   List<AppShortcut> get shortcuts => apps;
 
   @override
   bool supports(RemoteAction action) => rokuKey(action) != null;
+
+  @override
+  bool get supportsText => true;
 
   @override
   Future<void> open() async {
@@ -94,6 +106,43 @@ class RokuSession extends RemoteSession {
       return const CommandResult(false, 'This button is not on a Roku.');
     }
     return _post(Uri.parse('http://$host:8060/keypress/$key'));
+  }
+
+  @override
+  Future<CommandResult> sendText(String text) async {
+    final host = device.host;
+    if (host == null) {
+      return const CommandResult(false, 'This Roku has no address.');
+    }
+    if (text.isEmpty) {
+      return const CommandResult(false, 'Nothing to type.');
+    }
+    for (final rune in text.runes) {
+      final character = String.fromCharCode(rune);
+      final result = await _post(
+        Uri.parse('http://$host:8060/keypress/${rokuLitPath(character)}'),
+      );
+      if (!result.ok) return result;
+    }
+    return const CommandResult(true);
+  }
+
+  @override
+  Future<CommandResult> textBackspace() async {
+    final host = device.host;
+    if (host == null) {
+      return const CommandResult(false, 'This Roku has no address.');
+    }
+    return _post(Uri.parse('http://$host:8060/keypress/Backspace'));
+  }
+
+  @override
+  Future<CommandResult> textEnter() async {
+    final host = device.host;
+    if (host == null) {
+      return const CommandResult(false, 'This Roku has no address.');
+    }
+    return _post(Uri.parse('http://$host:8060/keypress/Enter'));
   }
 
   @override

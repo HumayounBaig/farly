@@ -8,12 +8,7 @@ import 'theme/farly_theme.dart';
 import 'models/farly_device.dart';
 
 class FarlyApp extends StatefulWidget {
-  const FarlyApp({
-    super.key,
-    this.store,
-    this.scanDevices,
-    this.sessions,
-  });
+  const FarlyApp({super.key, this.store, this.scanDevices, this.sessions});
 
   final DeviceStore? store;
   final Future<List<FarlyDevice>> Function()? scanDevices;

@@ -25,6 +25,9 @@ class LgSession extends RemoteSession {
   Stream<SessionUpdate> get updates => _updates.stream;
 
   @override
+  void rebind(FarlyDevice device) => this.device = device;
+
+  @override
   Future<void> open() async {
     final host = device.host;
     if (host == null) {
@@ -80,6 +83,17 @@ class LgSession extends RemoteSession {
         );
         if (!settled.isCompleted) settled.complete();
       },
+      onDone: () {
+        if (!identical(_channel, channel)) return;
+        _channel = null;
+        _updates.add(
+          const SessionUpdate(
+            SessionPhase.failed,
+            detail: 'The TV closed the connection. Tap Try again.',
+          ),
+        );
+        if (!settled.isCompleted) settled.complete();
+      },
     );
     channel.sink.add(lgRegistrationText(clientKey: device.clientKey));
     await settled.future.timeout(
@@ -97,7 +111,12 @@ class LgSession extends RemoteSession {
 
   void _onMessage(Object? data, Completer<void> settled) {
     if (data is! String) return;
-    final decoded = jsonDecode(data);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(data);
+    } on FormatException {
+      return;
+    }
     if (decoded is! Map) return;
     final type = decoded['type']?.toString() ?? '';
     final payload = decoded['payload'];
@@ -181,6 +200,9 @@ class LgSession extends RemoteSession {
   }
 
   @override
+  bool get supportsText => true;
+
+  @override
   Future<CommandResult> send(RemoteAction action) async {
     final channel = _channel;
     if (channel == null) {
@@ -214,9 +236,67 @@ class LgSession extends RemoteSession {
     }
   }
 
+  @override
+  Future<CommandResult> sendText(String text) async {
+    if (_channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    if (text.isEmpty) {
+      return const CommandResult(false, 'Nothing to type.');
+    }
+    try {
+      _request('ssap://com.webos.service.ime/insertText', {
+        'text': text,
+        'replace': false,
+      });
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The text did not reach the TV.');
+    }
+  }
+
+  @override
+  Future<CommandResult> textBackspace() async {
+    if (_channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    try {
+      _request('ssap://com.webos.service.ime/deleteCharacters', {'count': 1});
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+  }
+
+  @override
+  Future<CommandResult> textEnter() async {
+    if (_channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    try {
+      _request('ssap://com.webos.service.ime/sendEnterKey');
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+  }
+
   void _request(String uri, [Map<String, dynamic>? payload]) {
     _command += 1;
     _channel?.sink.add(jsonEncode(lgRequest('cmd_$_command', uri, payload)));
+  }
+
+  @override
+  bool get canRetry => true;
+
+  @override
+  Future<void> retry() async {
+    await _subscription?.cancel();
+    await _pointer?.sink.close();
+    await _channel?.sink.close();
+    _pointer = null;
+    _channel = null;
+    await open();
   }
 
   @override
