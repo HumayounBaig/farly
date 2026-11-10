@@ -30,6 +30,11 @@ class RoomModel extends ChangeNotifier {
     for (final device in devices) {
       if (device.id == id) return device;
     }
+    final host = id.contains('@') ? id.split('@').last : null;
+    if (host == null || host.isEmpty) return null;
+    for (final device in devices) {
+      if (device.host == host || device.hosts.contains(host)) return device;
+    }
     return null;
   }
 

@@ -126,9 +126,10 @@ class RemoteController extends ChangeNotifier {
   }
 
   Future<void> _bindAndOpen(String host) async {
+    // Keep [id] stable across hops so updateDevice replaces the saved row
+    // instead of appending a second paired copy when the TV has no uid.
     final next = _device.copyWith(
       host: host,
-      id: FarlyDevice.idFor(_device.brand, host),
       hosts: mergeHostHistory(primary: host, newer: _device.candidateHosts),
     );
     _device = next;

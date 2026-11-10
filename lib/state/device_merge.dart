@@ -78,12 +78,17 @@ List<FarlyDevice> collapseDevices(List<FarlyDevice> devices) {
   return collapsed;
 }
 
-/// Whether two entries are one device: the same announced identity, or the
-/// same address at the same time.
+/// Whether two entries are one device: the same announced identity, the same
+/// address, or a remembered address from a prior Wi-Fi hop.
 bool sameDevice(FarlyDevice a, FarlyDevice b) {
   if (a.id == b.id) return true;
   if (a.uid != null && a.uid == b.uid) return true;
-  return a.host != null && a.host == b.host;
+  if (a.host != null && a.host == b.host) return true;
+  if (a.kind != b.kind || !_sameControl(a, b)) return false;
+  // One entry already remembers the other's live address (band / AP hop).
+  if (b.host != null && a.hosts.contains(b.host!)) return true;
+  if (a.host != null && b.hosts.contains(a.host!)) return true;
+  return false;
 }
 
 /// Finds where [device] went after a merge changed its id or address.

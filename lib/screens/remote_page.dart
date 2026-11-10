@@ -50,7 +50,8 @@ class _RemotePageState extends State<RemotePage> {
 
   void _rememberWhenReady() {
     if (_remote.phase == SessionPhase.ready) {
-      widget.room.markConnected(widget.device);
+      // Use the live device: a Wi-Fi hop may have changed its address/id.
+      widget.room.markConnected(_remote.device);
     }
   }
 

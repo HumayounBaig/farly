@@ -69,6 +69,58 @@ void main() {
     await pending;
   });
 
+  test('updateDevice replaces a row that only shares host history', () async {
+    const saved = FarlyDevice(
+      id: 'androidTv@192.168.1.20',
+      name: 'Android TV',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.androidTv,
+      host: '192.168.1.20',
+      token: 'cert',
+      clientKey: 'key',
+      hosts: ['192.168.1.20', '192.168.1.80'],
+    );
+    final model = RoomModel(store: MemoryDeviceStore([saved]));
+    await model.load();
+    await model.updateDevice(
+      const FarlyDevice(
+        id: 'androidTv@192.168.1.80',
+        name: 'Android TV',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.androidTv,
+        host: '192.168.1.80',
+        token: 'cert',
+        clientKey: 'key',
+        hosts: ['192.168.1.80', '192.168.1.20'],
+      ),
+    );
+    expect(model.devices, hasLength(1));
+    expect(model.devices.single.host, '192.168.1.80');
+    expect(model.devices.single.token, 'cert');
+  });
+
+  test('markConnected uses the live rebound device for auto-open', () async {
+    const opened = FarlyDevice(
+      id: 'roku@192.168.1.20',
+      name: 'Den',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.roku,
+      host: '192.168.1.20',
+      hosts: ['192.168.1.20', '192.168.1.80'],
+    );
+    final live = opened.copyWith(host: '192.168.1.80');
+    final store = MemoryDeviceStore([opened]);
+    final model = RoomModel(store: store);
+    await model.load();
+    await model.updateDevice(live);
+    await model.markConnected(live);
+    expect(model.lastConnected?.host, '192.168.1.80');
+
+    final again = RoomModel(store: store);
+    await again.load();
+    expect(again.takeAutoOpen()?.host, '192.168.1.80');
+  });
+
   test('relocate updates a saved TV that answered on a new address', () async {
     const saved = FarlyDevice(
       id: 'roku@192.168.1.20',
@@ -122,6 +174,7 @@ void main() {
       expect(opened, ['192.168.1.20', '192.168.1.80']);
       expect(controller.phase, SessionPhase.ready);
       expect(controller.device.host, '192.168.1.80');
+      expect(controller.device.id, 'roku@192.168.1.20');
       controller.dispose();
     },
   );
