@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import '../models/farly_device.dart';
 import '../models/remote_action.dart';
+import '../models/stream_app.dart';
 import 'atv_identity.dart';
 import 'atv_wire.dart';
 import 'remote_session.dart';
@@ -47,9 +48,9 @@ class AndroidTvSession extends RemoteSession {
   var _hasImeCounter = false;
   var _hasImeFieldCounter = false;
 
-  static const apps = [
-    AppShortcut('YouTube', 'https://www.youtube.com'),
-    AppShortcut('Netflix', 'https://www.netflix.com/title'),
+  static final apps = [
+    StreamApp.netflix.shortcutFor(DeviceBrand.androidTv),
+    StreamApp.youtube.shortcutFor(DeviceBrand.androidTv),
   ];
 
   @override
@@ -174,14 +175,14 @@ class AndroidTvSession extends RemoteSession {
     try {
       _identity ??= await _identities();
     } catch (_) {
-      _say(SessionPhase.failed, 'Farly could not prepare a pairing key.');
+      _say(SessionPhase.failed, 'Could not prepare a pairing key.');
       return;
     }
     final link = await _AtvLink.connect(host, pairingPort, _identity!, timeout);
     if (link == null) {
       _say(
         SessionPhase.failed,
-        'This TV did not answer on the remote ports. Turn it on, and check it is a Google TV or Android TV.',
+        'TV did not answer. Turn it on and stay on this Wi-Fi.',
       );
       return;
     }

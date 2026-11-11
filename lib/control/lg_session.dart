@@ -64,7 +64,7 @@ class LgSession extends RemoteSession {
       _updates.add(
         const SessionUpdate(
           SessionPhase.failed,
-          detail: 'Farly could not reach this LG TV.',
+          detail: 'Could not reach this LG TV.',
         ),
       );
       return;
