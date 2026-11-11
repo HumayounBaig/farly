@@ -32,6 +32,7 @@ class _EditDeviceSheet extends StatefulWidget {
 class _EditDeviceSheetState extends State<_EditDeviceSheet> {
   late final TextEditingController _name;
   late String? _icon;
+  String? _error;
 
   @override
   void initState() {
@@ -50,106 +51,139 @@ class _EditDeviceSheetState extends State<_EditDeviceSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
     final preview = widget.device.copyWith(name: _name.text, icon: _icon);
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.88,
-      ),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF243731), FarlyColors.night],
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottom),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.9,
         ),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        border: Border(top: BorderSide(color: FarlyColors.edge)),
-      ),
-      padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + bottom),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: FarlyColors.mist.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(2),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF243731), FarlyColors.night],
+          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border(top: BorderSide(color: FarlyColors.edge)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: FarlyColors.mist.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        DeviceGlyph(device: preview, size: 52),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            'Edit device',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _name,
+                      autofocus: true,
+                      style: const TextStyle(color: FarlyColors.bone),
+                      cursorColor: FarlyColors.horizon,
+                      textCapitalization: TextCapitalization.words,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _save(),
+                      decoration: InputDecoration(
+                        hintText: 'Name',
+                        hintStyle: const TextStyle(color: FarlyColors.mist),
+                        prefixIcon: const Icon(
+                          Icons.edit_outlined,
+                          color: FarlyColors.mist,
+                          size: 20,
+                        ),
+                        filled: true,
+                        fillColor: const Color(0x14FFFFFF),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(color: FarlyColors.edge),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(
+                            color: FarlyColors.horizon,
+                          ),
+                        ),
+                        errorText: _error,
+                      ),
+                      onChanged: (_) {
+                        if (_error != null) setState(() => _error = null);
+                        setState(() {});
+                      },
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                DeviceGlyph(device: preview, size: 52),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    'Edit device',
-                    style: Theme.of(context).textTheme.titleLarge,
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Brand marks',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      _IconRow(
+                        icons: DeviceIcon.brands,
+                        selected: _icon,
+                        onSelect: (id) => setState(() => _icon = id),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Emojis',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                      const SizedBox(height: 10),
+                      _IconRow(
+                        icons: DeviceIcon.emojis,
+                        selected: _icon,
+                        onSelect: (id) => setState(() => _icon = id),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _name,
-              style: const TextStyle(color: FarlyColors.bone),
-              cursorColor: FarlyColors.horizon,
-              textCapitalization: TextCapitalization.words,
-              decoration: InputDecoration(
-                hintText: 'Name',
-                hintStyle: const TextStyle(color: FarlyColors.mist),
-                prefixIcon: const Icon(
-                  Icons.edit_outlined,
-                  color: FarlyColors.mist,
-                  size: 20,
-                ),
-                filled: true,
-                fillColor: const Color(0x14FFFFFF),
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: FarlyColors.edge),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: FarlyColors.horizon),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: FarlyPress(
+                  label: 'Save',
+                  icon: Icons.check_rounded,
+                  filled: true,
+                  expand: true,
+                  onPressed: _save,
                 ),
               ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 18),
-            Text('Brand marks', style: Theme.of(context).textTheme.labelMedium),
-            const SizedBox(height: 10),
-            _IconRow(
-              icons: DeviceIcon.brands,
-              selected: _icon,
-              onSelect: (id) => setState(() => _icon = id),
-            ),
-            const SizedBox(height: 16),
-            Text('Emojis', style: Theme.of(context).textTheme.labelMedium),
-            const SizedBox(height: 10),
-            Flexible(
-              child: SingleChildScrollView(
-                child: _IconRow(
-                  icons: DeviceIcon.emojis,
-                  selected: _icon,
-                  onSelect: (id) => setState(() => _icon = id),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            FarlyPress(
-              label: 'Save',
-              icon: Icons.check_rounded,
-              filled: true,
-              expand: true,
-              onPressed: _save,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -157,7 +191,10 @@ class _EditDeviceSheetState extends State<_EditDeviceSheet> {
 
   void _save() {
     final name = _name.text.trim();
-    if (name.isEmpty) return;
+    if (name.isEmpty) {
+      setState(() => _error = 'Enter a name');
+      return;
+    }
     Navigator.pop(
       context,
       widget.device.copyWith(

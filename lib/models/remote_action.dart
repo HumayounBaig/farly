@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 enum RemoteAction {
   up('Up'),
   down('Down'),
@@ -21,8 +23,27 @@ enum RemoteAction {
 }
 
 class AppShortcut {
-  const AppShortcut(this.label, this.id);
+  const AppShortcut({
+    required this.label,
+    required this.id,
+    this.mark,
+    this.tint,
+    this.catalogId,
+  });
+
+  /// Convenience for the older positional form used in tests and sessions.
+  factory AppShortcut.plain(String label, String id) =>
+      AppShortcut(label: label, id: id);
 
   final String label;
+
+  /// Platform launch target: Roku channel id or Android TV app link / URL.
   final String id;
+
+  /// Short brand mark drawn on the button (N, ▶, …).
+  final String? mark;
+  final Color? tint;
+
+  /// Catalog id from [StreamApp], or `custom`.
+  final String? catalogId;
 }

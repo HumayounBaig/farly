@@ -218,7 +218,7 @@ void main() {
     expect(tv.keys, [19, 24]);
     expect(tv.pingAnswered, isTrue);
     expect(tv.activeReply, 622 & atvFeatures);
-    expect(tv.appLinks, ['https://www.youtube.com']);
+    expect(tv.appLinks, ['https://www.netflix.com/title']);
     await session.close();
 
     final again = AndroidTvSession(

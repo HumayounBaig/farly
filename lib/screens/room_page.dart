@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/farly_device.dart';
 import '../state/remote_controller.dart';
 import '../state/room_model.dart';
+import '../storage/shortcut_store.dart';
 import '../theme/farly_colors.dart';
 import '../theme/farly_surfaces.dart';
 import '../widgets/bottom_aligned.dart';
@@ -18,10 +19,16 @@ import '../widgets/tv_maker_badge.dart';
 import 'open_device.dart';
 
 class RoomPage extends StatefulWidget {
-  const RoomPage({super.key, required this.room, this.sessions});
+  const RoomPage({
+    super.key,
+    required this.room,
+    this.sessions,
+    this.shortcuts,
+  });
 
   final RoomModel room;
   final SessionBuilder? sessions;
+  final ShortcutStore? shortcuts;
 
   @override
   State<RoomPage> createState() => _RoomPageState();
@@ -30,6 +37,7 @@ class RoomPage extends StatefulWidget {
 class _RoomPageState extends State<RoomPage> {
   RoomModel get room => widget.room;
   SessionBuilder? get sessions => widget.sessions;
+  ShortcutStore? get shortcuts => widget.shortcuts;
 
   @override
   void initState() {
@@ -49,7 +57,13 @@ class _RoomPageState extends State<RoomPage> {
     if (device == null) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      openDevice(context, device, room: room, sessions: sessions);
+      openDevice(
+        context,
+        device,
+        room: room,
+        sessions: sessions,
+        shortcuts: shortcuts,
+      );
     });
   }
 
@@ -91,6 +105,7 @@ class _RoomPageState extends State<RoomPage> {
                           FarlyDevice.preview,
                           room: room,
                           sessions: sessions,
+                          shortcuts: shortcuts,
                         ),
                       ),
                     ],
@@ -118,8 +133,14 @@ class _RoomPageState extends State<RoomPage> {
           device: device,
           answered:
               device.lastSeen != null && device.lastSeen == room.lastScanAt,
-          onOpen: () =>
-              openDevice(context, device, room: room, sessions: sessions),
+          onOpen: () => openDevice(
+            context,
+            device,
+            room: room,
+            sessions: sessions,
+            shortcuts: shortcuts,
+          ),
+          onEdit: () => _editDevice(context, device),
           onLongPress: () => _deviceActions(context, device),
         ),
         const SizedBox(height: 10),
@@ -127,11 +148,16 @@ class _RoomPageState extends State<RoomPage> {
       Padding(
         padding: const EdgeInsets.only(left: 4, top: 2),
         child: Text(
-          'Hold a device to rename it, change its icon, or forget it.',
+          'Tap the pencil or hold a device to rename it, change its icon, or forget it.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
     ];
+  }
+
+  Future<void> _editDevice(BuildContext context, FarlyDevice device) async {
+    final edited = await showEditDeviceSheet(context, device);
+    if (edited != null) await room.updateDevice(edited);
   }
 
   Future<void> _deviceActions(BuildContext context, FarlyDevice device) async {
@@ -142,8 +168,7 @@ class _RoomPageState extends State<RoomPage> {
     );
     if (!context.mounted) return;
     if (action == 'edit') {
-      final edited = await showEditDeviceSheet(context, device);
-      if (edited != null) await room.updateDevice(edited);
+      await _editDevice(context, device);
     } else if (action == 'forget') {
       await _forget(context, device);
     }
@@ -342,61 +367,80 @@ class _DeviceCard extends StatelessWidget {
     required this.device,
     required this.answered,
     required this.onOpen,
+    required this.onEdit,
     required this.onLongPress,
   });
 
   final FarlyDevice device;
   final bool answered;
   final VoidCallback onOpen;
+  final VoidCallback onEdit;
   final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final ready = device.brand.commandsReady;
-    return Pressable(
-      onPressed: onOpen,
-      onLongPress: onLongPress,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 10, 14),
-        decoration: FarlySurfaces.glass(),
-        child: Row(
-          children: [
-            DeviceGlyph(device: device),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: FarlySurfaces.glass(),
+      child: Row(
+        children: [
+          Expanded(
+            child: Pressable(
+              onPressed: onOpen,
+              onLongPress: onLongPress,
+              child: Row(
                 children: [
-                  Text(
-                    device.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    [
-                      device.brand.label,
-                      if (device.host != null) device.host!,
-                    ].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
+                  DeviceGlyph(device: device),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          device.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          [
+                            device.brand.label,
+                            if (device.host != null) device.host!,
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            TvMakerBadge(device: device),
-            const SizedBox(width: 8),
-            FarlyPill(
-              label: ready ? 'Ready' : 'Seen',
-              color: ready ? FarlyColors.horizon : FarlyColors.mist,
-              dot: answered,
+          ),
+          Pressable(
+            onPressed: onEdit,
+            label: 'Edit ${device.name}',
+            child: const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(
+                Icons.edit_outlined,
+                size: 20,
+                color: FarlyColors.mist,
+              ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
-          ],
-        ),
+          ),
+          TvMakerBadge(device: device),
+          const SizedBox(width: 6),
+          FarlyPill(
+            label: ready ? 'Ready' : 'Seen',
+            color: ready ? FarlyColors.horizon : FarlyColors.mist,
+            dot: answered,
+          ),
+          const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
+        ],
       ),
     );
   }

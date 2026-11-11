@@ -2,7 +2,9 @@ import 'package:farly/app.dart';
 import 'package:farly/control/remote_session.dart';
 import 'package:farly/models/farly_device.dart';
 import 'package:farly/models/remote_action.dart';
+import 'package:farly/models/stream_app.dart';
 import 'package:farly/storage/device_store.dart';
+import 'package:farly/storage/shortcut_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -167,7 +169,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Hold a device to rename it, change its icon, or forget it.'), findsOneWidget);
+    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or forget it.'), findsOneWidget);
     expect(await store.readLastConnected(), isNull);
 
     await tester.tap(find.text('TCL C6K'));
@@ -191,7 +193,83 @@ void main() {
 
     await tester.tap(find.bySemanticsLabel('Back to devices'));
     await tester.pumpAndSettle();
-    expect(find.text('Hold a device to rename it, change its icon, or forget it.'), findsOneWidget);
+    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or forget it.'), findsOneWidget);
+  });
+
+  testWidgets('pencil opens rename sheet and saves the name', (tester) async {
+    final store = MemoryDeviceStore([
+      const FarlyDevice(
+        id: 'roku@192.168.1.20',
+        name: 'Living room',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.roku,
+        host: '192.168.1.20',
+        port: 8060,
+      ),
+    ]);
+    await tester.pumpWidget(
+      FarlyApp(
+        store: store,
+        scanDevices: () async => const [],
+        sessions: (device, onCredentials) => NotedSession(
+          phase: SessionPhase.limited,
+          detail: 'Preview. Nothing is connected.',
+          preview: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit device'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'Den TV');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('Den TV'), findsOneWidget);
+    final saved = await store.read();
+    expect(saved.single.name, 'Den TV');
+    expect(saved.single.nameLocked, isTrue);
+  });
+
+  testWidgets('hold an app button to switch Netflix to Disney+', (tester) async {
+    tester.view
+      ..physicalSize = const Size(1170, 2532)
+      ..devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final shortcuts = MemoryShortcutStore();
+    await tester.pumpWidget(
+      FarlyApp(
+        store: MemoryDeviceStore([
+          const FarlyDevice(
+            id: 'roku@192.168.1.20',
+            name: 'Living room',
+            kind: DeviceKind.screen,
+            brand: DeviceBrand.roku,
+            host: '192.168.1.20',
+            port: 8060,
+          ),
+        ]),
+        scanDevices: () async => const [],
+        sessions: (device, onCredentials) => _ReadySession(),
+        shortcuts: shortcuts,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Living room'));
+    await tester.pumpAndSettle();
+    expect(find.text('Netflix'), findsOneWidget);
+    expect(find.text('YouTube'), findsOneWidget);
+    await tester.longPress(find.text('Netflix'));
+    await tester.pumpAndSettle();
+    expect(find.text('App button 1'), findsOneWidget);
+    await tester.tap(find.text('Disney+'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('Disney+'), findsOneWidget);
+    expect(find.text('Netflix'), findsNothing);
+    final slots = await shortcuts.read();
+    expect(slots.first.appId, 'disney');
   });
 
   testWidgets('address sheet rejects a bad address', (tester) async {
@@ -215,12 +293,22 @@ class _ReadySession extends RemoteSession {
   Stream<SessionUpdate> get updates => _updates.stream;
 
   @override
+  List<AppShortcut> get shortcuts => [
+    StreamApp.netflix.shortcutFor(DeviceBrand.roku),
+    StreamApp.youtube.shortcutFor(DeviceBrand.roku),
+  ];
+
+  @override
   Future<void> open() async {
     _updates.add(const SessionUpdate(SessionPhase.ready, detail: 'Connected'));
   }
 
   @override
   Future<CommandResult> send(RemoteAction action) async =>
+      const CommandResult(true);
+
+  @override
+  Future<CommandResult> launch(AppShortcut shortcut) async =>
       const CommandResult(true);
 
   @override

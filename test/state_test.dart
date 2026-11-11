@@ -63,7 +63,7 @@ void main() {
     await controller.connect();
     await Future<void>.delayed(Duration.zero);
     final pending = controller.launch(
-      const AppShortcut('YouTube', 'https://www.youtube.com'),
+      AppShortcut.plain('YouTube', 'https://www.youtube.com'),
     );
     controller.dispose();
     await pending;

@@ -4,17 +4,21 @@ import 'package:flutter/services.dart';
 import '../control/remote_session.dart';
 import '../models/farly_device.dart';
 import '../models/remote_action.dart';
+import '../models/stream_app.dart';
 import '../state/remote_controller.dart';
 import '../state/room_model.dart';
+import '../storage/shortcut_store.dart';
 import '../theme/farly_colors.dart';
 import '../theme/farly_surfaces.dart';
 import '../widgets/bottom_aligned.dart';
 import '../widgets/device_glyph.dart';
+import '../widgets/edit_shortcut_sheet.dart';
 import '../widgets/farly_backdrop.dart';
 import '../widgets/farly_pill.dart';
 import '../widgets/farly_press.dart';
 import '../widgets/horizon_pad.dart';
 import '../widgets/keys.dart';
+import '../widgets/stream_mark.dart';
 import '../widgets/tv_keyboard_sheet.dart';
 
 class RemotePage extends StatefulWidget {
@@ -23,11 +27,13 @@ class RemotePage extends StatefulWidget {
     required this.device,
     required this.room,
     this.sessions,
+    this.shortcuts,
   });
 
   final FarlyDevice device;
   final RoomModel room;
   final SessionBuilder? sessions;
+  final ShortcutStore? shortcuts;
 
   @override
   State<RemotePage> createState() => _RemotePageState();
@@ -40,12 +46,22 @@ class _RemotePageState extends State<RemotePage> {
     onCredentials: widget.room.updateDevice,
     relocate: widget.room.relocate,
   );
+  late final ShortcutStore _shortcutStore =
+      widget.shortcuts ?? PreferencesShortcutStore();
+  List<ShortcutSlot> _slots = ShortcutSlot.defaults;
 
   @override
   void initState() {
     super.initState();
     _remote.addListener(_rememberWhenReady);
     _remote.connect();
+    _loadShortcuts();
+  }
+
+  Future<void> _loadShortcuts() async {
+    final slots = await _shortcutStore.read();
+    if (!mounted) return;
+    setState(() => _slots = slots);
   }
 
   void _rememberWhenReady() {
@@ -60,6 +76,39 @@ class _RemotePageState extends State<RemotePage> {
     _remote.removeListener(_rememberWhenReady);
     _remote.dispose();
     super.dispose();
+  }
+
+  FarlyDevice get _liveDevice {
+    final current = _remote.device;
+    for (final device in widget.room.devices) {
+      if (device.id == current.id || device.id == widget.device.id) {
+        // Prefer the saved row so a rename/icon edit shows up immediately.
+        return device;
+      }
+    }
+    return current;
+  }
+
+  List<AppShortcut> get _shortcuts {
+    final brand = _remote.device.brand;
+    if (_remote.session.shortcuts.isEmpty) return const [];
+    return [for (final slot in _slots) slot.toShortcut(brand)];
+  }
+
+  Future<void> _editShortcut(int index) async {
+    if (index < 0 || index >= _slots.length) return;
+    final edited = await showEditShortcutSheet(
+      context: context,
+      slot: _slots[index],
+      brand: _remote.device.brand,
+      index: index,
+    );
+    if (edited == null || !mounted) return;
+    final next = [..._slots];
+    next[index] = edited;
+    await _shortcutStore.write(next);
+    if (!mounted) return;
+    setState(() => _slots = next);
   }
 
   Widget _key(RemoteAction action, IconData icon, {Color? tint}) {
@@ -94,23 +143,31 @@ class _RemotePageState extends State<RemotePage> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: ListenableBuilder(
-                listenable: _remote,
+                listenable: Listenable.merge([_remote, widget.room]),
                 builder: (context, _) {
                   final session = _remote.session;
+                  final live = _liveDevice;
+                  final shortcuts = _shortcuts;
+                  final detail = _remote.detail?.trim();
+                  final showStatus =
+                      detail != null &&
+                      detail.isNotEmpty &&
+                      detail != 'Connected' &&
+                      detail != live.brand.label;
                   return Column(
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                         child: Row(
                           children: [
-                            DeviceGlyph(device: widget.device, size: 44),
+                            DeviceGlyph(device: live, size: 44),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    widget.device.name,
+                                    live.name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context)
@@ -119,8 +176,8 @@ class _RemotePageState extends State<RemotePage> {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    _remote.detail ?? widget.device.brand.label,
-                                    maxLines: 2,
+                                    live.brand.label,
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context)
                                         .textTheme
@@ -134,6 +191,14 @@ class _RemotePageState extends State<RemotePage> {
                           ],
                         ),
                       ),
+                      if (showStatus)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                          child: _StatusBanner(
+                            text: detail,
+                            alert: _remote.phase == SessionPhase.failed,
+                          ),
+                        ),
                       Expanded(
                         child: BottomAligned(
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
@@ -158,23 +223,29 @@ class _RemotePageState extends State<RemotePage> {
                                 ),
                               ],
                             ),
-                            if (session.shortcuts.isNotEmpty) ...[
+                            if (shortcuts.isNotEmpty) ...[
                               const SizedBox(height: 14),
                               Row(
                                 children: [
-                                  for (final shortcut in session.shortcuts) ...[
-                                    if (shortcut != session.shortcuts.first)
-                                      const SizedBox(width: 10),
+                                  for (var i = 0; i < shortcuts.length; i++) ...[
+                                    if (i > 0) const SizedBox(width: 10),
                                     Expanded(
-                                      child: FarlyPress(
-                                        label: shortcut.label,
-                                        icon: Icons.play_circle_outline_rounded,
+                                      child: _ShortcutButton(
+                                        shortcut: shortcuts[i],
                                         onPressed: () =>
-                                            _remote.launch(shortcut),
+                                            _remote.launch(shortcuts[i]),
+                                        onLongPress: () =>
+                                            _editShortcut(i),
                                       ),
                                     ),
                                   ],
                                 ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Hold an app button to change it.',
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
                             ],
                             if (_remote.phase == SessionPhase.pairing) ...[
@@ -383,5 +454,80 @@ class _PhasePill extends StatelessWidget {
       SessionPhase.failed => ('Offline', FarlyColors.clay),
     };
     return FarlyPill(label: label, color: color, dot: true);
+  }
+}
+
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({required this.text, this.alert = false});
+
+  final String text;
+  final bool alert;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = alert ? FarlyColors.clay : FarlyColors.horizon;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        text,
+        softWrap: true,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: FarlyColors.bone,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+}
+
+class _ShortcutButton extends StatelessWidget {
+  const _ShortcutButton({
+    required this.shortcut,
+    required this.onPressed,
+    required this.onLongPress,
+  });
+
+  final AppShortcut shortcut;
+  final VoidCallback onPressed;
+  final VoidCallback onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = shortcut.tint ?? FarlyColors.horizon;
+    final mark = shortcut.mark ?? shortcut.label.characters.first;
+    return Pressable(
+      onPressed: onPressed,
+      onLongPress: onLongPress,
+      label: shortcut.label,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 56),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: FarlySurfaces.glass(radius: 20),
+        child: Row(
+          children: [
+            StreamMark(mark: mark, tint: tint, size: 34),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                shortcut.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: FarlyColors.bone,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

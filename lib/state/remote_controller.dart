@@ -82,7 +82,7 @@ class RemoteController extends ChangeNotifier {
           await session.open();
         } catch (_) {
           phase = SessionPhase.failed;
-          detail = 'Farly could not open a connection.';
+          detail = 'Could not open a connection.';
           _notify();
         }
         return;
@@ -141,7 +141,7 @@ class RemoteController extends ChangeNotifier {
       await session.open();
     } catch (_) {
       phase = SessionPhase.failed;
-      detail = 'Farly could not open a connection.';
+      detail = 'Could not open a connection.';
       _notify();
     }
   }

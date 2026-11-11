@@ -4,15 +4,23 @@ import 'screens/room_page.dart';
 import 'state/remote_controller.dart';
 import 'state/room_model.dart';
 import 'storage/device_store.dart';
+import 'storage/shortcut_store.dart';
 import 'theme/farly_theme.dart';
 import 'models/farly_device.dart';
 
 class FarlyApp extends StatefulWidget {
-  const FarlyApp({super.key, this.store, this.scanDevices, this.sessions});
+  const FarlyApp({
+    super.key,
+    this.store,
+    this.scanDevices,
+    this.sessions,
+    this.shortcuts,
+  });
 
   final DeviceStore? store;
   final Future<List<FarlyDevice>> Function()? scanDevices;
   final SessionBuilder? sessions;
+  final ShortcutStore? shortcuts;
 
   @override
   State<FarlyApp> createState() => _FarlyAppState();
@@ -42,7 +50,11 @@ class _FarlyAppState extends State<FarlyApp> {
       title: 'Farly',
       debugShowCheckedModeBanner: false,
       theme: farlyTheme(),
-      home: RoomPage(room: room, sessions: widget.sessions),
+      home: RoomPage(
+        room: room,
+        sessions: widget.sessions,
+        shortcuts: widget.shortcuts,
+      ),
     );
   }
 }

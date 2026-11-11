@@ -65,7 +65,7 @@ class SamsungSession extends RemoteSession {
       _updates.add(
         const SessionUpdate(
           SessionPhase.failed,
-          detail: 'Farly could not reach this Samsung TV.',
+          detail: 'Could not reach this Samsung TV.',
         ),
       );
       return;

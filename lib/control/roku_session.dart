@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import '../models/farly_device.dart';
 import '../models/remote_action.dart';
+import '../models/stream_app.dart';
 import 'remote_session.dart';
 
 /// Roku literal-key path for one typed character.
@@ -40,9 +41,9 @@ class RokuSession extends RemoteSession {
   final bool _ownsClient;
   final _updates = SessionUpdates();
 
-  static const apps = [
-    AppShortcut('Netflix', '12'),
-    AppShortcut('YouTube', '837'),
+  static final apps = [
+    StreamApp.netflix.shortcutFor(DeviceBrand.roku),
+    StreamApp.youtube.shortcutFor(DeviceBrand.roku),
   ];
 
   @override
@@ -92,7 +93,7 @@ class RokuSession extends RemoteSession {
       _updates.add(
         const SessionUpdate(
           SessionPhase.failed,
-          detail: 'Farly could not reach this Roku.',
+          detail: 'Could not reach this Roku.',
         ),
       );
     }
@@ -164,7 +165,7 @@ class RokuSession extends RemoteSession {
       }
       return CommandResult(false, 'The Roku answered ${response.statusCode}.');
     } catch (_) {
-      return const CommandResult(false, 'Farly could not reach this Roku.');
+      return const CommandResult(false, 'Could not reach this Roku.');
     }
   }
 

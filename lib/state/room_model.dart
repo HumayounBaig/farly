@@ -88,7 +88,8 @@ class RoomModel extends ChangeNotifier {
       await _apply(mergeDevices(saved: devices, found: found, seenAt: seenAt));
       lastScanAt = seenAt;
       if (found.isEmpty) {
-        notice = 'Nothing answered. On iPhone, allow Local Network access for Farly in Settings. Use the same Wi-Fi as the TV, or use Add by address (needed for LG, Samsung, Sony and Roku on iPhone).';
+        notice =
+            'Nothing answered. Allow Local Network for Farly, stay on the TV’s Wi-Fi, or Add by address.';
       }
     } catch (_) {
       notice = 'The scan stopped early. You can add a device by address.';
