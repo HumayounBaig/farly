@@ -118,5 +118,11 @@ class NotedSession extends RemoteSession {
   }
 
   @override
+  Future<CommandResult> textEnter() async {
+    if (preview) return const CommandResult(true);
+    return CommandResult(false, detail);
+  }
+
+  @override
   Future<void> close() => _updates.close();
 }

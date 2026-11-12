@@ -65,6 +65,10 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
     if (value.isEmpty) return;
     await _run(() async {
       await widget.onSend(value);
+      // Android TV password/PIN fields wait for IME Done (KEYCODE_ENTER).
+      if (widget.onEnter != null) {
+        await widget.onEnter!();
+      }
       if (!mounted) return;
       _text.clear();
       HapticFeedback.lightImpact();
@@ -125,8 +129,8 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
             const SizedBox(height: 4),
             Text(
               _obscure
-                  ? 'Hidden while you type a password or PIN. Tap Send to put it on the TV.'
-                  : 'Focus a field on the TV, then type here and tap Send.',
+                  ? 'Hidden while you type a password or PIN. Tap Done to type it and submit on the TV.'
+                  : 'Focus a field on the TV, then type here and tap Done.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 14),
@@ -139,7 +143,7 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
               keyboardType: _obscure
                   ? TextInputType.visiblePassword
                   : TextInputType.text,
-              textInputAction: TextInputAction.send,
+              textInputAction: TextInputAction.done,
               style: const TextStyle(color: FarlyColors.bone, fontSize: 18),
               cursorColor: FarlyColors.horizon,
               onSubmitted: (_) => _send(),
@@ -177,7 +181,7 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
                 if (widget.onEnter != null) ...[
                   RoundKey(
                     icon: Icons.keyboard_return_rounded,
-                    label: 'Enter on TV',
+                    label: 'Done on TV without retyping',
                     size: 52,
                     onPressed: _busy ? null : () => _run(widget.onEnter!),
                   ),
@@ -185,11 +189,11 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
                 ],
                 Expanded(
                   child: FarlyPress(
-                    label: _busy ? 'Sending' : 'Send to TV',
-                    icon: Icons.keyboard_rounded,
+                    label: _busy ? 'Sending' : 'Done',
+                    icon: Icons.done_rounded,
                     filled: true,
                     expand: true,
-                    onPressed: _busy ? null : _send,
+                    onPressed: _busy ? null : () => _send(),
                   ),
                 ),
               ],

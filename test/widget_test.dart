@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Type on the TV'), findsOneWidget);
     await tester.enterText(find.byType(TextField).last, 'hello');
-    await tester.tap(find.text('Send to TV'));
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Would type'), findsOneWidget);
   });
