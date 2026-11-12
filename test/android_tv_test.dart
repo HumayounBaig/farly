@@ -35,6 +35,21 @@ void main() {
     expect(atvMenuKeyCode('allApps'), 284);
     expect(atvKeyCode(RemoteAction.brightnessUp), 220);
     expect(atvKeyCode(RemoteAction.input), 178);
+
+    // Wire still maps brightness, but the session hides it — phone brightness
+    // keycodes do nothing to TCL / Google TV picture output.
+    final session = AndroidTvSession(
+      device: const FarlyDevice(
+        id: 'androidTv@192.168.1.30',
+        name: 'TCL C6K',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.androidTv,
+        host: '192.168.1.30',
+      ),
+    );
+    expect(session.supports(RemoteAction.brightnessUp), isFalse);
+    expect(session.supports(RemoteAction.brightnessDown), isFalse);
+    expect(session.supports(RemoteAction.volumeUp), isTrue);
   });
 
   test('wire messages encode the fields the TV reads', () {

@@ -269,8 +269,9 @@ class _RemotePageState extends State<RemotePage> {
                                 onPressed: _remote.retry,
                               ),
                             ],
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 14),
                             KeyRocker(
+                              height: 54,
                               segments: [
                                 _segment(
                                   RemoteAction.rewind,
@@ -286,55 +287,49 @@ class _RemotePageState extends State<RemotePage> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 16),
                             Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                if (!showBrightness) const Spacer(),
-                                Expanded(
-                                  flex: showBrightness ? 1 : 2,
-                                  child: LevelRail(
-                                    icon: Icons.volume_up_rounded,
-                                    label: 'Volume',
-                                    onIncrease: () =>
-                                        _remote.send(RemoteAction.volumeUp),
-                                    onDecrease: () =>
-                                        _remote.send(RemoteAction.volumeDown),
-                                    onIconTap: () =>
-                                        _remote.send(RemoteAction.mute),
-                                    increaseKey: const ValueKey(
-                                      RemoteAction.volumeUp,
-                                    ),
-                                    decreaseKey: const ValueKey(
-                                      RemoteAction.volumeDown,
-                                    ),
-                                    iconKey: const ValueKey(RemoteAction.mute),
+                                LevelRail(
+                                  icon: Icons.volume_up_rounded,
+                                  label: 'Volume',
+                                  onIncrease: () =>
+                                      _remote.send(RemoteAction.volumeUp),
+                                  onDecrease: () =>
+                                      _remote.send(RemoteAction.volumeDown),
+                                  onIconTap: () =>
+                                      _remote.send(RemoteAction.mute),
+                                  increaseKey: const ValueKey(
+                                    RemoteAction.volumeUp,
                                   ),
+                                  decreaseKey: const ValueKey(
+                                    RemoteAction.volumeDown,
+                                  ),
+                                  iconKey: const ValueKey(RemoteAction.mute),
                                 ),
                                 if (showBrightness) ...[
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: LevelRail(
-                                      icon: Icons.wb_sunny_rounded,
-                                      label: 'Brightness',
-                                      onIncrease: () => _remote.send(
-                                        RemoteAction.brightnessUp,
-                                      ),
-                                      onDecrease: () => _remote.send(
-                                        RemoteAction.brightnessDown,
-                                      ),
-                                      increaseKey: const ValueKey(
-                                        RemoteAction.brightnessUp,
-                                      ),
-                                      decreaseKey: const ValueKey(
-                                        RemoteAction.brightnessDown,
-                                      ),
+                                  const SizedBox(width: 22),
+                                  LevelRail(
+                                    icon: Icons.wb_sunny_rounded,
+                                    label: 'Brightness',
+                                    onIncrease: () => _remote.send(
+                                      RemoteAction.brightnessUp,
+                                    ),
+                                    onDecrease: () => _remote.send(
+                                      RemoteAction.brightnessDown,
+                                    ),
+                                    increaseKey: const ValueKey(
+                                      RemoteAction.brightnessUp,
+                                    ),
+                                    decreaseKey: const ValueKey(
+                                      RemoteAction.brightnessDown,
                                     ),
                                   ),
-                                ] else
-                                  const Spacer(),
+                                ],
                               ],
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 14),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
@@ -364,7 +359,7 @@ class _RemotePageState extends State<RemotePage> {
                               ],
                             ),
                             if (session.supportsMenuProbes) ...[
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               Center(
                                 child: Pressable(
                                   label: 'Menu not working? Try other keys',
@@ -390,7 +385,7 @@ class _RemotePageState extends State<RemotePage> {
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 18),
+                            const SizedBox(height: 14),
                             HorizonPad(
                               height: padHeight,
                               onAction: _remote.send,

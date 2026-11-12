@@ -312,6 +312,16 @@ class AndroidTvSession extends RemoteSession {
   @override
   bool get supportsMenuProbes => true;
 
+  /// Android / Google TV (including TCL) do not honor phone brightness
+  /// keycodes — those only dim the set's own panel UI, not picture output.
+  @override
+  bool supports(RemoteAction action) {
+    return switch (action) {
+      RemoteAction.brightnessUp || RemoteAction.brightnessDown => false,
+      _ => true,
+    };
+  }
+
   @override
   Future<CommandResult> send(RemoteAction action) async {
     final link = _remote;
