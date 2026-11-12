@@ -14,11 +14,25 @@ String? samsungKey(RemoteAction action) {
     RemoteAction.volumeUp => 'KEY_VOLUP',
     RemoteAction.volumeDown => 'KEY_VOLDOWN',
     RemoteAction.mute => 'KEY_MUTE',
+    RemoteAction.brightnessUp => 'KEY_BRIGHTNESS_UP',
+    RemoteAction.brightnessDown => 'KEY_BRIGHTNESS_DOWN',
     RemoteAction.power => 'KEY_POWER',
     RemoteAction.play => 'KEY_PLAY',
     RemoteAction.rewind => 'KEY_REWIND',
     RemoteAction.forward => 'KEY_FF',
+    RemoteAction.menu => samsungMenuKey('menu'),
     RemoteAction.input => 'KEY_SOURCE',
+  };
+}
+
+String? samsungMenuKey(String commandId) {
+  return switch (commandId) {
+    'menu' => 'KEY_MENU',
+    'tools' => 'KEY_TOOLS',
+    'contents' => 'KEY_CONTENTS',
+    'guide' => 'KEY_GUIDE',
+    'info' => 'KEY_INFO',
+    _ => null,
   };
 }
 

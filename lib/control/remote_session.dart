@@ -47,6 +47,14 @@ abstract class RemoteSession {
 
   bool supports(RemoteAction action) => true;
 
+  /// Whether this TV offers alternate Menu keys to try.
+  bool get supportsMenuProbes => false;
+
+  /// Sends one Menu alternative without changing the saved preference.
+  Future<CommandResult> sendMenuProbe(String commandId) async {
+    return send(RemoteAction.menu);
+  }
+
   /// Whether the phone can type into an on-screen field on this device.
   bool get supportsText => false;
 
@@ -120,6 +128,15 @@ class NotedSession extends RemoteSession {
   @override
   Future<CommandResult> textEnter() async {
     if (preview) return const CommandResult(true);
+    return CommandResult(false, detail);
+  }
+
+  @override
+  bool get supportsMenuProbes => preview;
+
+  @override
+  Future<CommandResult> sendMenuProbe(String commandId) async {
+    if (preview) return CommandResult(false, 'Would send Menu ($commandId)');
     return CommandResult(false, detail);
   }
 

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:web_socket_channel/io.dart';
 
 import '../models/farly_device.dart';
+import '../models/menu_command.dart';
 import '../models/remote_action.dart';
 import 'lg_registration.dart';
 import 'remote_session.dart';
@@ -26,6 +27,17 @@ class LgSession extends RemoteSession {
 
   @override
   void rebind(FarlyDevice device) => this.device = device;
+
+  @override
+  bool supports(RemoteAction action) {
+    return switch (action) {
+      RemoteAction.power ||
+      RemoteAction.volumeUp ||
+      RemoteAction.volumeDown ||
+      RemoteAction.mute => true,
+      _ => lgPointerButton(action) != null,
+    };
+  }
 
   @override
   Future<void> open() async {
@@ -203,6 +215,9 @@ class LgSession extends RemoteSession {
   bool get supportsText => true;
 
   @override
+  bool get supportsMenuProbes => true;
+
+  @override
   Future<CommandResult> send(RemoteAction action) async {
     final channel = _channel;
     if (channel == null) {
@@ -219,21 +234,41 @@ class LgSession extends RemoteSession {
         case RemoteAction.mute:
           _muted = !_muted;
           _request('ssap://audio/setMute', {'mute': _muted});
+        case RemoteAction.menu:
+          return await _sendPointer(
+            lgMenuButton(MenuCommand.resolvedId(device)),
+          );
         default:
-          final button = lgPointerButton(action);
-          final pointer = _pointer;
-          if (button == null || pointer == null) {
-            return const CommandResult(
-              false,
-              'The TV has not opened button control yet.',
-            );
-          }
-          pointer.sink.add(lgPointerMessage(button));
+          return await _sendPointer(lgPointerButton(action));
       }
       return const CommandResult(true);
     } catch (_) {
       return const CommandResult(false, 'The key did not reach the TV.');
     }
+  }
+
+  @override
+  Future<CommandResult> sendMenuProbe(String commandId) async {
+    if (_channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    try {
+      return await _sendPointer(lgMenuButton(commandId));
+    } catch (_) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+  }
+
+  Future<CommandResult> _sendPointer(String? button) async {
+    final pointer = _pointer;
+    if (button == null || pointer == null) {
+      return const CommandResult(
+        false,
+        'The TV has not opened button control yet.',
+      );
+    }
+    pointer.sink.add(lgPointerMessage(button));
+    return const CommandResult(true);
   }
 
   @override

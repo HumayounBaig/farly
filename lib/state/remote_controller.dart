@@ -154,14 +154,7 @@ class RemoteController extends ChangeNotifier {
   }
 
   Future<void> send(RemoteAction action) async {
-    if (phase == SessionPhase.connecting || phase == SessionPhase.failed) {
-      if (phase == SessionPhase.connecting) detail = 'Still connecting.';
-      _notify();
-      return;
-    }
-    if (phase == SessionPhase.pairing) {
-      detail = 'Enter the code shown on the TV first.';
-      _notify();
+    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
       return;
     }
     final result = await session.send(action);
@@ -169,6 +162,41 @@ class RemoteController extends ChangeNotifier {
       detail = result.detail;
       _notify();
     }
+  }
+
+  /// Tries an alternate Menu key without saving it yet.
+  Future<void> sendMenuProbe(String commandId) async {
+    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+      return;
+    }
+    final result = await session.sendMenuProbe(commandId);
+    if (result.detail != null) {
+      detail = result.detail;
+      _notify();
+    }
+  }
+
+  /// Remembers which Menu key this TV should use.
+  void setMenuCommand(String commandId) {
+    _device = _device.copyWith(menuCommand: commandId);
+    session.rebind(_device);
+    _onCredentials(_device);
+    detail = 'Menu key saved for this TV.';
+    _notify();
+  }
+
+  bool _readyForKeys({required String pairingMessage}) {
+    if (phase == SessionPhase.connecting || phase == SessionPhase.failed) {
+      if (phase == SessionPhase.connecting) detail = 'Still connecting.';
+      _notify();
+      return false;
+    }
+    if (phase == SessionPhase.pairing) {
+      detail = pairingMessage;
+      _notify();
+      return false;
+    }
+    return true;
   }
 
   bool submitting = false;

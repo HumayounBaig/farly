@@ -184,3 +184,179 @@ class KeyRocker extends StatelessWidget {
     );
   }
 }
+
+/// Vertical glass rail that fires increase/decrease as the thumb slides.
+class LevelRail extends StatefulWidget {
+  const LevelRail({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onIncrease,
+    required this.onDecrease,
+    this.onIconTap,
+    this.increaseKey,
+    this.decreaseKey,
+    this.iconKey,
+    this.height = 148,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onIncrease;
+  final VoidCallback onDecrease;
+  final VoidCallback? onIconTap;
+  final Key? increaseKey;
+  final Key? decreaseKey;
+  final Key? iconKey;
+  final double height;
+
+  @override
+  State<LevelRail> createState() => _LevelRailState();
+}
+
+class _LevelRailState extends State<LevelRail> {
+  static const _step = 22.0;
+  static const _tapTravel = 12.0;
+
+  var _level = 0.55;
+  var _pending = 0.0;
+  Offset? _origin;
+  DateTime? _lastAt;
+
+  void _bump(bool up) {
+    HapticFeedback.selectionClick();
+    if (up) {
+      widget.onIncrease();
+    } else {
+      widget.onDecrease();
+    }
+    setState(() {
+      _level = (_level + (up ? 0.06 : -0.06)).clamp(0.08, 1.0);
+    });
+  }
+
+  void _drag(double dy) {
+    final next = _pending - dy;
+    final now = DateTime.now();
+    final last = _lastAt;
+    if (last != null && now.difference(last) < const Duration(milliseconds: 70)) {
+      _pending = next;
+      return;
+    }
+    if (next.abs() < _step) {
+      _pending = next;
+      return;
+    }
+    _bump(next > 0);
+    _pending = 0;
+    _lastAt = now;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: widget.label,
+      child: Container(
+        height: widget.height,
+        decoration: FarlySurfaces.glass(radius: 28),
+        clipBehavior: Clip.antiAlias,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final fillHeight = constraints.maxHeight * _level;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 90),
+                    curve: Curves.easeOut,
+                    height: fillHeight,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          FarlyColors.horizon.withValues(alpha: 0.55),
+                          FarlyColors.horizon.withValues(alpha: 0.12),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (details) => _origin = details.localPosition,
+                  onTapUp: (details) {
+                    final origin = _origin;
+                    _origin = null;
+                    if (origin == null) return;
+                    final travel = (details.localPosition - origin).distance;
+                    if (travel >= _tapTravel) return;
+                    final up = details.localPosition.dy < constraints.maxHeight / 2;
+                    _bump(up);
+                  },
+                  onTapCancel: () => _origin = null,
+                  onVerticalDragStart: (details) {
+                    _pending = 0;
+                    _lastAt = null;
+                    _origin = details.localPosition;
+                  },
+                  onVerticalDragUpdate: (details) => _drag(details.delta.dy),
+                  onVerticalDragEnd: (_) {
+                    _pending = 0;
+                    _origin = null;
+                  },
+                  onVerticalDragCancel: () {
+                    _pending = 0;
+                    _origin = null;
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Column(
+                      children: [
+                        Icon(
+                          key: widget.increaseKey,
+                          Icons.add_rounded,
+                          size: 18,
+                          color: FarlyColors.mist.withValues(alpha: 0.7),
+                        ),
+                        const Spacer(),
+                        if (widget.onIconTap == null)
+                          Icon(
+                            key: widget.iconKey,
+                            widget.icon,
+                            size: 26,
+                            color: FarlyColors.bone,
+                          )
+                        else
+                          Pressable(
+                            key: widget.iconKey,
+                            label: '${widget.label}, tap for mute',
+                            onPressed: widget.onIconTap,
+                            child: Icon(
+                              widget.icon,
+                              size: 26,
+                              color: FarlyColors.bone,
+                            ),
+                          ),
+                        const Spacer(),
+                        Icon(
+                          key: widget.decreaseKey,
+                          Icons.remove_rounded,
+                          size: 18,
+                          color: FarlyColors.mist.withValues(alpha: 0.7),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}

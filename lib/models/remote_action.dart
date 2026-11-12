@@ -11,10 +11,13 @@ enum RemoteAction {
   volumeUp('Volume up'),
   volumeDown('Volume down'),
   mute('Mute'),
+  brightnessUp('Brightness up'),
+  brightnessDown('Brightness down'),
   power('Power'),
   play('Play'),
   rewind('Rewind'),
   forward('Forward'),
+  menu('Menu'),
   input('Input');
 
   const RemoteAction(this.label);
