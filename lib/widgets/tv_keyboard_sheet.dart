@@ -129,8 +129,8 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
             const SizedBox(height: 4),
             Text(
               _obscure
-                  ? 'Hidden while you type a password or PIN. Tap Done to type it and submit on the TV.'
-                  : 'Focus a field on the TV, then type here and tap Done.',
+                  ? 'Hidden while you type a password or PIN. Focus the field in a TV app (not a PS5 keyboard), hide the TV’s on-screen keyboard if it is open, then tap Done.'
+                  : 'Focus a text box in a TV app, hide the TV’s on-screen keyboard if it covers the field, then type here and tap Done. Game console keyboards (PS5, Xbox) cannot take Farly typing.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 14),

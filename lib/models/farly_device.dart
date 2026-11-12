@@ -94,6 +94,7 @@ class FarlyDevice {
     this.icon,
     this.nameLocked = false,
     this.hosts = const [],
+    this.menuCommand,
   });
 
   final String id;
@@ -121,6 +122,9 @@ class FarlyDevice {
   /// access-point hop). [host] is tried first; these are fallbacks.
   final List<String> hosts;
 
+  /// Which alternate Menu key this TV should use ([MenuCommand.id]).
+  final String? menuCommand;
+
   static String idFor(DeviceBrand brand, String host) => '${brand.name}@$host';
 
   static const preview = FarlyDevice(
@@ -144,9 +148,11 @@ class FarlyDevice {
     String? icon,
     bool? nameLocked,
     List<String>? hosts,
+    String? menuCommand,
     bool clearToken = false,
     bool clearClientKey = false,
     bool clearIcon = false,
+    bool clearMenuCommand = false,
   }) {
     return FarlyDevice(
       id: id ?? this.id,
@@ -164,6 +170,7 @@ class FarlyDevice {
       icon: clearIcon ? null : icon ?? this.icon,
       nameLocked: nameLocked ?? this.nameLocked,
       hosts: hosts ?? this.hosts,
+      menuCommand: clearMenuCommand ? null : menuCommand ?? this.menuCommand,
     );
   }
 
@@ -201,6 +208,7 @@ class FarlyDevice {
     'icon': icon,
     'nameLocked': nameLocked,
     'hosts': hosts,
+    'menuCommand': menuCommand,
   };
 
   factory FarlyDevice.fromJson(Map<String, dynamic> json) {
@@ -228,6 +236,7 @@ class FarlyDevice {
                 if (item is String && item.isNotEmpty) item,
             ]
           : const [],
+      menuCommand: json['menuCommand'] as String?,
     );
   }
 }

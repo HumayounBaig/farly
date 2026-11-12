@@ -18,6 +18,7 @@ import '../widgets/farly_pill.dart';
 import '../widgets/farly_press.dart';
 import '../widgets/horizon_pad.dart';
 import '../widgets/keys.dart';
+import '../widgets/menu_probe_sheet.dart';
 import '../widgets/stream_mark.dart';
 import '../widgets/tv_keyboard_sheet.dart';
 
@@ -154,6 +155,9 @@ class _RemotePageState extends State<RemotePage> {
                       detail.isNotEmpty &&
                       detail != 'Connected' &&
                       detail != live.brand.label;
+                  final showBrightness = session.supports(
+                    RemoteAction.brightnessUp,
+                  );
                   return Column(
                     children: [
                       Padding(
@@ -266,32 +270,6 @@ class _RemotePageState extends State<RemotePage> {
                               ),
                             ],
                             const SizedBox(height: 16),
-                            HorizonPad(
-                              height: padHeight,
-                              onAction: _remote.send,
-                            ),
-                            const SizedBox(height: 18),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                _key(RemoteAction.back, Icons.undo_rounded),
-                                _key(RemoteAction.home, Icons.home_rounded),
-                                if (session.supportsText)
-                                  RoundKey(
-                                    icon: Icons.keyboard_rounded,
-                                    label: 'Type on the TV',
-                                    onPressed: () => showTvKeyboardSheet(
-                                      context: context,
-                                      onSend: _remote.sendText,
-                                      onEnter: _remote.textEnter,
-                                      onBackspace: _remote.textBackspace,
-                                    ),
-                                  ),
-                                if (session.supports(RemoteAction.input))
-                                  _key(RemoteAction.input, Icons.input_rounded),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
                             KeyRocker(
                               segments: [
                                 _segment(
@@ -308,22 +286,114 @@ class _RemotePageState extends State<RemotePage> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            KeyRocker(
-                              segments: [
-                                _segment(
-                                  RemoteAction.volumeDown,
-                                  Icons.remove_rounded,
+                            const SizedBox(height: 14),
+                            Row(
+                              children: [
+                                if (!showBrightness) const Spacer(),
+                                Expanded(
+                                  flex: showBrightness ? 1 : 2,
+                                  child: LevelRail(
+                                    icon: Icons.volume_up_rounded,
+                                    label: 'Volume',
+                                    onIncrease: () =>
+                                        _remote.send(RemoteAction.volumeUp),
+                                    onDecrease: () =>
+                                        _remote.send(RemoteAction.volumeDown),
+                                    onIconTap: () =>
+                                        _remote.send(RemoteAction.mute),
+                                    increaseKey: const ValueKey(
+                                      RemoteAction.volumeUp,
+                                    ),
+                                    decreaseKey: const ValueKey(
+                                      RemoteAction.volumeDown,
+                                    ),
+                                    iconKey: const ValueKey(RemoteAction.mute),
+                                  ),
                                 ),
-                                _segment(
-                                  RemoteAction.mute,
-                                  Icons.volume_off_rounded,
-                                ),
-                                _segment(
-                                  RemoteAction.volumeUp,
-                                  Icons.add_rounded,
-                                ),
+                                if (showBrightness) ...[
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: LevelRail(
+                                      icon: Icons.wb_sunny_rounded,
+                                      label: 'Brightness',
+                                      onIncrease: () => _remote.send(
+                                        RemoteAction.brightnessUp,
+                                      ),
+                                      onDecrease: () => _remote.send(
+                                        RemoteAction.brightnessDown,
+                                      ),
+                                      increaseKey: const ValueKey(
+                                        RemoteAction.brightnessUp,
+                                      ),
+                                      decreaseKey: const ValueKey(
+                                        RemoteAction.brightnessDown,
+                                      ),
+                                    ),
+                                  ),
+                                ] else
+                                  const Spacer(),
                               ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                _key(RemoteAction.back, Icons.undo_rounded),
+                                _key(RemoteAction.home, Icons.home_rounded),
+                                if (session.supports(RemoteAction.menu))
+                                  _key(
+                                    RemoteAction.menu,
+                                    Icons.menu_rounded,
+                                  ),
+                                if (session.supportsText)
+                                  RoundKey(
+                                    icon: Icons.keyboard_rounded,
+                                    label: 'Type on the TV',
+                                    onPressed: () => showTvKeyboardSheet(
+                                      context: context,
+                                      onSend: _remote.sendText,
+                                      onEnter: _remote.textEnter,
+                                      onBackspace: _remote.textBackspace,
+                                    ),
+                                  ),
+                                if (session.supports(RemoteAction.input))
+                                  _key(
+                                    RemoteAction.input,
+                                    Icons.input_rounded,
+                                  ),
+                              ],
+                            ),
+                            if (session.supportsMenuProbes) ...[
+                              const SizedBox(height: 8),
+                              Center(
+                                child: Pressable(
+                                  label: 'Menu not working? Try other keys',
+                                  onPressed: () async {
+                                    final chosen = await showMenuProbeSheet(
+                                      context: context,
+                                      device: _liveDevice,
+                                      onTry: _remote.sendMenuProbe,
+                                    );
+                                    if (chosen == null || !mounted) return;
+                                    _remote.setMenuCommand(chosen);
+                                  },
+                                  child: Text(
+                                    'Menu not working?',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: FarlyColors.horizon,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 18),
+                            HorizonPad(
+                              height: padHeight,
+                              onAction: _remote.send,
                             ),
                           ],
                         ),

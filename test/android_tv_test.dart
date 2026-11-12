@@ -29,6 +29,11 @@ void main() {
     expect(atvKeyCode(RemoteAction.home), 3);
     expect(atvKeyCode(RemoteAction.power), 26);
     expect(atvKeyCode(RemoteAction.mute), 164);
+    expect(atvKeyCode(RemoteAction.menu), 82);
+    expect(atvMenuKeyCode('menu'), 82);
+    expect(atvMenuKeyCode('settings'), 176);
+    expect(atvMenuKeyCode('allApps'), 284);
+    expect(atvKeyCode(RemoteAction.brightnessUp), 220);
     expect(atvKeyCode(RemoteAction.input), 178);
   });
 

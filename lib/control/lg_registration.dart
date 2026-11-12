@@ -117,7 +117,17 @@ String? lgPointerButton(RemoteAction action) {
     RemoteAction.play => 'PLAY',
     RemoteAction.rewind => 'REWIND',
     RemoteAction.forward => 'FASTFORWARD',
-    RemoteAction.input => 'MENU',
+    RemoteAction.menu => lgMenuButton('menu'),
+    RemoteAction.input => null,
+    _ => null,
+  };
+}
+
+String? lgMenuButton(String commandId) {
+  return switch (commandId) {
+    'menu' => 'MENU',
+    'info' => 'INFO',
+    'exit' => 'EXIT',
     _ => null,
   };
 }

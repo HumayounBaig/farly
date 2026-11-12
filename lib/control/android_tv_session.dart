@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../models/farly_device.dart';
+import '../models/menu_command.dart';
 import '../models/remote_action.dart';
 import '../models/stream_app.dart';
 import 'atv_identity.dart';
@@ -47,6 +48,10 @@ class AndroidTvSession extends RemoteSession {
   var _imeFieldCounter = 0;
   var _hasImeCounter = false;
   var _hasImeFieldCounter = false;
+  var _textFieldFocused = false;
+  var _textValue = '';
+  Completer<bool>? _editEcho;
+  var _editEchoFromFieldStatus = false;
 
   static final apps = [
     StreamApp.netflix.shortcutFor(DeviceBrand.androidTv),
@@ -68,6 +73,14 @@ class AndroidTvSession extends RemoteSession {
     await _remote?.close();
     _pairing = null;
     _remote = null;
+    _imeCounter = 0;
+    _imeFieldCounter = 0;
+    _hasImeCounter = false;
+    _hasImeFieldCounter = false;
+    _textFieldFocused = false;
+    _textValue = '';
+    _editEcho = null;
+    _editEchoFromFieldStatus = false;
 
     final host = device.host;
     if (host == null) {
@@ -124,21 +137,42 @@ class AndroidTvSession extends RemoteSession {
             :final imeCounter,
             :final fieldCounter,
             :final fromKeyInject,
+            :final fieldValue,
+            :final hasFieldStatus,
           ):
+            // Live counters only arrive on remote_ime_key_inject. Batch-edit
+            // echoes often carry a stale placeholder and must not win.
             if (fromKeyInject || imeCounter != 0) {
               _imeCounter = imeCounter;
               _hasImeCounter = true;
             }
-            _imeFieldCounter = fieldCounter;
-            _hasImeFieldCounter = true;
+            if (hasFieldStatus) {
+              if (fieldCounter != 0 || fromKeyInject) {
+                _imeFieldCounter = fieldCounter;
+                _hasImeFieldCounter = true;
+              }
+              _textFieldFocused = true;
+              _textValue = fieldValue;
+              _completeEditEcho(fromFieldStatus: true);
+            } else if (fromKeyInject) {
+              // App changed without a text field — drop stale focus/counters.
+              _textFieldFocused = false;
+              _textValue = '';
+              _hasImeCounter = false;
+              _hasImeFieldCounter = false;
+            }
           case AtvImeBatchEchoEvent(:final imeCounter, :final fieldCounter):
-            if (!_hasImeCounter) {
+            if (!_hasImeCounter && imeCounter != 0) {
               _imeCounter = imeCounter;
               _hasImeCounter = true;
             }
-            if (!_hasImeFieldCounter) {
+            if (!_hasImeFieldCounter && fieldCounter != 0) {
               _imeFieldCounter = fieldCounter;
               _hasImeFieldCounter = true;
+            }
+            // Soft ack only; field-status inject is the authoritative contents.
+            if (imeCounter != 0 || fieldCounter != 0) {
+              _completeEditEcho(fromFieldStatus: false);
             }
           case AtvErrorEvent():
           case AtvOtherEvent():
@@ -276,11 +310,34 @@ class AndroidTvSession extends RemoteSession {
   bool get supportsText => true;
 
   @override
+  bool get supportsMenuProbes => true;
+
+  @override
   Future<CommandResult> send(RemoteAction action) async {
-    final code = atvKeyCode(action);
     final link = _remote;
-    if (code == null || link == null) {
+    if (link == null) {
       return const CommandResult(false, 'The TV is not connected.');
+    }
+    final code = action == RemoteAction.menu
+        ? atvMenuKeyCode(MenuCommand.resolvedId(device))
+        : atvKeyCode(action);
+    if (code == null) {
+      return const CommandResult(false, 'This button is not on this TV.');
+    }
+    return link.send(atvKeyInject(code))
+        ? const CommandResult(true)
+        : const CommandResult(false, 'The key did not reach the TV.');
+  }
+
+  @override
+  Future<CommandResult> sendMenuProbe(String commandId) async {
+    final link = _remote;
+    final code = atvMenuKeyCode(commandId);
+    if (link == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    if (code == null) {
+      return const CommandResult(false, 'Unknown menu key.');
     }
     return link.send(atvKeyInject(code))
         ? const CommandResult(true)
@@ -296,16 +353,80 @@ class AndroidTvSession extends RemoteSession {
     if (text.isEmpty) {
       return const CommandResult(false, 'Nothing to type.');
     }
-    final ok = link.send(
-      atvImeBatchEdit(
-        imeCounter: _imeCounter,
-        fieldCounter: _imeFieldCounter,
-        text: text,
-      ),
-    );
-    if (!ok) {
-      return const CommandResult(false, 'The text did not reach the TV.');
+
+    // Prefer the TV input-method path only while a field is focused.
+    // On-screen keyboards swallow key events; PS5/Xbox keyboards never report
+    // an Android text field.
+    if (_textFieldFocused) {
+      final start = _textValue.length;
+      final pending = Completer<bool>();
+      _editEcho = pending;
+      _editEchoFromFieldStatus = false;
+      final ok = link.send(
+        atvImeBatchEdit(
+          imeCounter: _imeCounter,
+          fieldCounter: _imeFieldCounter,
+          text: text,
+          start: start,
+          end: start,
+        ),
+      );
+      if (!ok) {
+        _editEcho = null;
+        return const CommandResult(false, 'The text did not reach the TV.');
+      }
+      final accepted = await pending.future.timeout(
+        const Duration(milliseconds: 1500),
+        onTimeout: () => false,
+      );
+      final fromField = _editEchoFromFieldStatus;
+      if (identical(_editEcho, pending)) _editEcho = null;
+      if (accepted) {
+        // Field-status ack already set _textValue from the TV.
+        if (!fromField) _textValue = '$_textValue$text';
+        return const CommandResult(true);
+      }
     }
+
+    final asKeys = await _sendTextAsKeys(text);
+    if (asKeys.ok) return asKeys;
+
+    return CommandResult(
+      false,
+      _textFieldFocused
+          ? 'The TV did not accept the text. Hide its on-screen keyboard, tap the text box, and try again.'
+          : 'No TV text box is focused. Farly can type into TV apps, but not into a PS5 or other console keyboard — use the console controller, or open the field in a TV app first.',
+    );
+  }
+
+  void _completeEditEcho({required bool fromFieldStatus}) {
+    if (fromFieldStatus) _editEchoFromFieldStatus = true;
+    final pending = _editEcho;
+    if (pending != null && !pending.isCompleted) {
+      pending.complete(true);
+    }
+  }
+
+  Future<CommandResult> _sendTextAsKeys(String text) async {
+    final link = _remote;
+    if (link == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    for (final rune in text.runes) {
+      final character = String.fromCharCode(rune);
+      final code = atvCharKeyCode(character);
+      if (code == null) {
+        return CommandResult(
+          false,
+          'Cannot type “$character” as a key. Focus a TV text box so Farly can use the input method.',
+        );
+      }
+      if (!link.send(atvKeyInject(code))) {
+        return const CommandResult(false, 'The text did not reach the TV.');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 35));
+    }
+    if (_textFieldFocused) _textValue = '$_textValue$text';
     return const CommandResult(true);
   }
 
@@ -315,9 +436,14 @@ class AndroidTvSession extends RemoteSession {
     if (link == null) {
       return const CommandResult(false, 'The TV is not connected.');
     }
-    return link.send(atvKeyInject(atvKeyDelete))
-        ? const CommandResult(true)
-        : const CommandResult(false, 'The key did not reach the TV.');
+    final ok = link.send(atvKeyInject(atvKeyDelete));
+    if (!ok) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+    if (_textValue.isNotEmpty) {
+      _textValue = _textValue.substring(0, _textValue.length - 1);
+    }
+    return const CommandResult(true);
   }
 
   @override

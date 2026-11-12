@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:web_socket_channel/io.dart';
 
 import '../models/farly_device.dart';
+import '../models/menu_command.dart';
 import '../models/remote_action.dart';
 import 'remote_session.dart';
 import 'samsung_keys.dart';
@@ -146,11 +147,37 @@ class SamsungSession extends RemoteSession {
   }
 
   @override
+  bool get supportsMenuProbes => true;
+
+  @override
   Future<CommandResult> send(RemoteAction action) async {
-    final key = samsungKey(action);
     final channel = _channel;
-    if (key == null || channel == null) {
+    if (channel == null) {
       return const CommandResult(false, 'The TV is not connected.');
+    }
+    final key = action == RemoteAction.menu
+        ? samsungMenuKey(MenuCommand.resolvedId(device))
+        : samsungKey(action);
+    if (key == null) {
+      return const CommandResult(false, 'This button is not on this TV.');
+    }
+    try {
+      channel.sink.add(jsonEncode(samsungKeyPayload(key)));
+      return const CommandResult(true);
+    } catch (_) {
+      return const CommandResult(false, 'The key did not reach the TV.');
+    }
+  }
+
+  @override
+  Future<CommandResult> sendMenuProbe(String commandId) async {
+    final channel = _channel;
+    final key = samsungMenuKey(commandId);
+    if (channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    if (key == null) {
+      return const CommandResult(false, 'Unknown menu key.');
     }
     try {
       channel.sink.add(jsonEncode(samsungKeyPayload(key)));

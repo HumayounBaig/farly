@@ -34,11 +34,28 @@ int? atvKeyCode(RemoteAction action) {
     RemoteAction.volumeUp => 24,
     RemoteAction.volumeDown => 25,
     RemoteAction.mute => 164,
+    RemoteAction.brightnessUp => 220,
+    RemoteAction.brightnessDown => 221,
     RemoteAction.power => 26,
     RemoteAction.play => 85,
     RemoteAction.rewind => 89,
     RemoteAction.forward => 90,
+    RemoteAction.menu => atvMenuKeyCode('menu'),
     RemoteAction.input => 178,
+  };
+}
+
+/// Android / Google TV / TCL menu-like keys people can try.
+int? atvMenuKeyCode(String commandId) {
+  return switch (commandId) {
+    'menu' => 82, // KEYCODE_MENU
+    'settings' => 176, // KEYCODE_SETTINGS — common TCL / Google TV menu
+    'allApps' => 284, // KEYCODE_ALL_APPS
+    'tvContentsMenu' => 256, // KEYCODE_TV_CONTENTS_MENU
+    'contextMenu' => 257, // KEYCODE_TV_MEDIA_CONTEXT_MENU
+    'info' => 165, // KEYCODE_INFO
+    'guide' => 172, // KEYCODE_GUIDE
+    _ => null,
   };
 }
 
@@ -117,6 +134,12 @@ extension ProtoRead on ProtoFields {
   int? integer(int field) {
     final value = this[field]?.first;
     return value is int ? value : null;
+  }
+
+  String? string(int field) {
+    final value = this[field]?.first;
+    if (value is! Uint8List) return null;
+    return utf8.decode(value, allowMalformed: true);
   }
 
   ProtoFields? message(int field) {
@@ -284,15 +307,18 @@ Uint8List atvKeyInject(int keyCode) =>
 Uint8List atvAppLink(String link) =>
     (ProtoWriter()..message(90, ProtoWriter()..string(1, link))).toBytes();
 
-/// Inserts [text] at the TV cursor. Counters must match the focused field.
+/// Replaces the half-open range [[start], [end]) in the focused field with
+/// [text]. Use equal endpoints to insert. Counters must match the field.
 Uint8List atvImeBatchEdit({
   required int imeCounter,
   required int fieldCounter,
   required String text,
+  required int start,
+  required int end,
 }) {
   final imeObject = ProtoWriter()
-    ..varint(1, text.length)
-    ..varint(2, text.length)
+    ..varint(1, start)
+    ..varint(2, end)
     ..string(3, text);
   final editInfo = ProtoWriter()
     ..varint(1, 1)
@@ -305,6 +331,29 @@ Uint8List atvImeBatchEdit({
           ..message(3, editInfo),
       ))
       .toBytes();
+}
+
+/// Android KEYCODE for one printable ASCII character, when IME is unavailable.
+int? atvCharKeyCode(String character) {
+  if (character.length != 1) return null;
+  final unit = character.codeUnitAt(0);
+  if (unit >= 0x61 && unit <= 0x7a) return 29 + (unit - 0x61); // a-z
+  if (unit >= 0x41 && unit <= 0x5a) return 29 + (unit - 0x41); // A-Z
+  if (unit >= 0x30 && unit <= 0x39) return 7 + (unit - 0x30); // 0-9
+  return switch (character) {
+    ' ' => 62,
+    '@' => 77,
+    '.' => 56,
+    ',' => 55,
+    '-' => 69,
+    '=' => 70,
+    '/' => 76,
+    '+' => 81,
+    '*' => 17,
+    '#' => 18,
+    '\n' => 66,
+    _ => null,
+  };
 }
 
 sealed class AtvRemoteEvent {
@@ -344,11 +393,17 @@ class AtvImeFocusEvent extends AtvRemoteEvent {
     required this.imeCounter,
     required this.fieldCounter,
     this.fromKeyInject = false,
+    this.fieldValue = '',
+    this.fieldLabel = '',
+    this.hasFieldStatus = false,
   });
 
   final int imeCounter;
   final int fieldCounter;
   final bool fromKeyInject;
+  final String fieldValue;
+  final String fieldLabel;
+  final bool hasFieldStatus;
 }
 
 class AtvImeBatchEchoEvent extends AtvRemoteEvent {
@@ -371,10 +426,14 @@ AtvRemoteEvent parseAtvRemote(Uint8List data) {
   if (ping != null) return AtvPingEvent(ping.integer(1) ?? 0);
   final imeInject = fields.message(20);
   if (imeInject != null) {
+    final status = imeInject.message(2);
     return AtvImeFocusEvent(
       imeCounter: imeInject.message(1)?.integer(1) ?? 0,
-      fieldCounter: imeInject.message(2)?.integer(1) ?? 0,
+      fieldCounter: status?.integer(1) ?? 0,
       fromKeyInject: true,
+      fieldValue: status?.string(2) ?? '',
+      fieldLabel: status?.string(6) ?? '',
+      hasFieldStatus: status != null,
     );
   }
   final batch = fields.message(21);
@@ -386,9 +445,13 @@ AtvRemoteEvent parseAtvRemote(Uint8List data) {
   }
   final show = fields.message(22);
   if (show != null) {
+    final status = show.message(2);
     return AtvImeFocusEvent(
       imeCounter: 0,
-      fieldCounter: show.message(2)?.integer(1) ?? 0,
+      fieldCounter: status?.integer(1) ?? 0,
+      fieldValue: status?.string(2) ?? '',
+      fieldLabel: status?.string(6) ?? '',
+      hasFieldStatus: status != null,
     );
   }
   if (fields.has(40)) return const AtvStartEvent();

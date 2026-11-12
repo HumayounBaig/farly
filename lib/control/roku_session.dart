@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 
 import '../models/farly_device.dart';
+import '../models/menu_command.dart';
 import '../models/remote_action.dart';
 import '../models/stream_app.dart';
 import 'remote_session.dart';
@@ -23,11 +24,23 @@ String? rokuKey(RemoteAction action) {
     RemoteAction.volumeUp => 'VolumeUp',
     RemoteAction.volumeDown => 'VolumeDown',
     RemoteAction.mute => 'VolumeMute',
+    RemoteAction.brightnessUp => null,
+    RemoteAction.brightnessDown => null,
     RemoteAction.power => 'Power',
     RemoteAction.play => 'Play',
     RemoteAction.rewind => 'Rev',
     RemoteAction.forward => 'Fwd',
+    RemoteAction.menu => rokuMenuKey('info'),
     RemoteAction.input => null,
+  };
+}
+
+String? rokuMenuKey(String commandId) {
+  return switch (commandId) {
+    'info' => 'Info',
+    'search' => 'Search',
+    'replay' => 'InstantReplay',
+    _ => null,
   };
 }
 
@@ -100,10 +113,28 @@ class RokuSession extends RemoteSession {
   }
 
   @override
+  bool get supportsMenuProbes => true;
+
+  @override
   Future<CommandResult> send(RemoteAction action) async {
-    final key = rokuKey(action);
     final host = device.host;
-    if (key == null || host == null) {
+    if (host == null) {
+      return const CommandResult(false, 'This button is not on a Roku.');
+    }
+    final key = action == RemoteAction.menu
+        ? rokuMenuKey(MenuCommand.resolvedId(device))
+        : rokuKey(action);
+    if (key == null) {
+      return const CommandResult(false, 'This button is not on a Roku.');
+    }
+    return _post(Uri.parse('http://$host:8060/keypress/$key'));
+  }
+
+  @override
+  Future<CommandResult> sendMenuProbe(String commandId) async {
+    final host = device.host;
+    final key = rokuMenuKey(commandId);
+    if (host == null || key == null) {
       return const CommandResult(false, 'This button is not on a Roku.');
     }
     return _post(Uri.parse('http://$host:8060/keypress/$key'));
