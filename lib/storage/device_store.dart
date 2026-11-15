@@ -9,18 +9,28 @@ abstract class DeviceStore {
 
   Future<void> write(List<FarlyDevice> devices);
 
-  /// The id of the device whose remote last connected.
+  /// The id of the device whose remote last connected (legacy, any network).
   Future<String?> readLastConnected();
 
   Future<void> writeLastConnected(String? id);
+
+  /// Last connected device id keyed by Wi-Fi fingerprint.
+  Future<Map<String, String>> readLastConnectedByNetwork();
+
+  Future<void> writeLastConnectedByNetwork(Map<String, String> byNetwork);
 }
 
 class MemoryDeviceStore implements DeviceStore {
-  MemoryDeviceStore([List<FarlyDevice>? seed, this._lastConnected])
-    : _devices = [...?seed];
+  MemoryDeviceStore([
+    List<FarlyDevice>? seed,
+    this._lastConnected,
+    Map<String, String>? lastByNetwork,
+  ]) : _devices = [...?seed],
+       _lastByNetwork = {...?lastByNetwork};
 
   List<FarlyDevice> _devices;
   String? _lastConnected;
+  Map<String, String> _lastByNetwork;
 
   @override
   Future<List<FarlyDevice>> read() async => List.unmodifiable(_devices);
@@ -37,11 +47,21 @@ class MemoryDeviceStore implements DeviceStore {
   Future<void> writeLastConnected(String? id) async {
     _lastConnected = id;
   }
+
+  @override
+  Future<Map<String, String>> readLastConnectedByNetwork() async =>
+      Map.unmodifiable(_lastByNetwork);
+
+  @override
+  Future<void> writeLastConnectedByNetwork(Map<String, String> byNetwork) async {
+    _lastByNetwork = {...byNetwork};
+  }
 }
 
 class PreferencesDeviceStore implements DeviceStore {
   static const _key = 'farly.devices';
   static const _lastConnectedKey = 'farly.lastConnected';
+  static const _lastByNetworkKey = 'farly.lastConnectedByNetwork';
 
   @override
   Future<List<FarlyDevice>> read() async {
@@ -82,6 +102,37 @@ class PreferencesDeviceStore implements DeviceStore {
       await preferences.remove(_lastConnectedKey);
     } else {
       await preferences.setString(_lastConnectedKey, id);
+    }
+  }
+
+  @override
+  Future<Map<String, String>> readLastConnectedByNetwork() async {
+    final preferences = await SharedPreferences.getInstance();
+    final raw = preferences.getString(_lastByNetworkKey);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const {};
+      return {
+        for (final entry in decoded.entries)
+          if (entry.key is String &&
+              entry.value is String &&
+              (entry.key as String).isNotEmpty &&
+              (entry.value as String).isNotEmpty)
+            entry.key as String: entry.value as String,
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  @override
+  Future<void> writeLastConnectedByNetwork(Map<String, String> byNetwork) async {
+    final preferences = await SharedPreferences.getInstance();
+    if (byNetwork.isEmpty) {
+      await preferences.remove(_lastByNetworkKey);
+    } else {
+      await preferences.setString(_lastByNetworkKey, jsonEncode(byNetwork));
     }
   }
 }

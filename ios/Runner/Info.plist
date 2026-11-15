@@ -42,6 +42,10 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Farly looks on your Wi-Fi for TVs and air conditioners so you can control them.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Farly uses your location only to read the Wi-Fi name so home TVs stay hidden on other networks.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Farly uses your location only to read the Wi-Fi name so home TVs stay hidden on other networks.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

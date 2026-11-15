@@ -147,6 +147,13 @@ void main() {
       port: 8009,
       attributes: {'md': 'Smart TV', 'fn': 'Living Room TV'},
     );
+    final haier = classifyService(
+      type: '_googlecast._tcp',
+      name: 'Haier-Matrix-0123456789abcdef0123456789abcdef',
+      host: '192.168.1.32',
+      port: 8009,
+      attributes: {'md': 'Haier Matrix TV', 'fn': 'Bedroom'},
+    );
     final speaker = classifyService(
       type: '_googlecast._tcp',
       name: 'Google-Nest-Mini-0123456789abcdef0123456789abcdef',
@@ -157,6 +164,8 @@ void main() {
     expect(tcl?.brand, DeviceBrand.androidTv);
     expect(tcl?.name, 'Living Room TV');
     expect(tcl?.port, 6466);
+    expect(haier?.brand, DeviceBrand.androidTv);
+    expect(haier?.name, 'Bedroom');
     expect(speaker?.brand, DeviceBrand.chromecast);
     expect(speaker?.name, 'Google-Nest-Mini');
     expect(DeviceBrand.androidTv.commandsReady, isTrue);

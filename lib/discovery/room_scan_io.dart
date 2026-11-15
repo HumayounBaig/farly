@@ -40,26 +40,38 @@ Future<List<FarlyDevice>> scanRoom() async {
 }
 
 /// Google TV sets often announce only Cast. If one also answers on the
-/// Android TV remote port, it can take remote buttons.
+/// Android TV remote ports, it can take remote buttons.
 Future<void> _promoteCastTvs(Map<String, FarlyDevice> byHost) async {
   final casts = byHost.entries
       .where((entry) => entry.value.brand == DeviceBrand.chromecast)
       .toList();
   await Future.wait(
     casts.map((entry) async {
-      try {
-        final socket = await Socket.connect(
-          entry.key,
-          DeviceBrand.androidTv.defaultPort!,
-          timeout: const Duration(milliseconds: 800),
-        );
-        socket.destroy();
+      if (await _answersAtvRemote(entry.key)) {
         byHost[entry.key] = asAndroidTv(entry.value);
-      } catch (_) {
-        // A speaker or an older Chromecast.
       }
     }),
   );
+}
+
+Future<bool> _answersAtvRemote(String host) async {
+  for (final port in [
+    DeviceBrand.androidTv.defaultPort!,
+    6467,
+  ]) {
+    try {
+      final socket = await Socket.connect(
+        host,
+        port,
+        timeout: const Duration(milliseconds: 800),
+      );
+      socket.destroy();
+      return true;
+    } catch (_) {
+      // Try the other port.
+    }
+  }
+  return false;
 }
 
 Future<void> _ssdp(Map<String, FarlyDevice> byHost) async {

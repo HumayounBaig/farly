@@ -1,8 +1,12 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/farly_device.dart';
 import '../state/remote_controller.dart';
 import '../state/room_model.dart';
+import '../storage/layout_store.dart';
 import '../storage/shortcut_store.dart';
 import '../theme/farly_colors.dart';
 import '../theme/farly_surfaces.dart';
@@ -24,32 +28,45 @@ class RoomPage extends StatefulWidget {
     required this.room,
     this.sessions,
     this.shortcuts,
+    this.layout,
   });
 
   final RoomModel room;
   final SessionBuilder? sessions;
   final ShortcutStore? shortcuts;
+  final LayoutStore? layout;
 
   @override
   State<RoomPage> createState() => _RoomPageState();
 }
 
-class _RoomPageState extends State<RoomPage> {
+class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   RoomModel get room => widget.room;
   SessionBuilder? get sessions => widget.sessions;
   ShortcutStore? get shortcuts => widget.shortcuts;
+  LayoutStore? get layout => widget.layout;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     room.addListener(_reopenLastRemote);
     _reopenLastRemote();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     room.removeListener(_reopenLastRemote);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(room.refreshNetwork());
+    }
   }
 
   void _reopenLastRemote() {
@@ -63,6 +80,7 @@ class _RoomPageState extends State<RoomPage> {
         room: room,
         sessions: sessions,
         shortcuts: shortcuts,
+        layout: layout,
       );
     });
   }
@@ -70,6 +88,29 @@ class _RoomPageState extends State<RoomPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: _SavedDevicesDrawer(
+        room: room,
+        onOpen: (device) {
+          Navigator.pop(context);
+          openDevice(
+            context,
+            device,
+            room: room,
+            sessions: sessions,
+            shortcuts: shortcuts,
+            layout: layout,
+          );
+        },
+        onEdit: (device) async {
+          Navigator.pop(context);
+          await _editDevice(context, device);
+        },
+        onForget: (device) async {
+          Navigator.pop(context);
+          await _forget(context, device);
+        },
+      ),
       body: FarlyBackdrop(
         child: SafeArea(
           child: Center(
@@ -78,17 +119,31 @@ class _RoomPageState extends State<RoomPage> {
               child: ListenableBuilder(
                 listenable: room,
                 builder: (context, _) {
+                  final onNetwork = room.devicesOnNetwork;
                   return Column(
                     children: [
-                      _Header(count: room.devices.length),
+                      _Header(
+                        count: onNetwork.length,
+                        networkLabel: room.network?.label,
+                        elsewhereCount: room.devicesElsewhere.length,
+                        onOpenSaved: () =>
+                            _scaffoldKey.currentState?.openDrawer(),
+                      ),
                       Expanded(
                         child: BottomAligned(
                           padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
                           children: [
-                            if (room.devices.isEmpty)
-                              const _EmptyHorizon()
+                            if (onNetwork.isEmpty)
+                              room.devices.isEmpty
+                                  ? const _EmptyHorizon()
+                                  : _EmptyOnNetwork(
+                                      savedCount: room.devices.length,
+                                      onOpenSaved: () => _scaffoldKey
+                                          .currentState
+                                          ?.openDrawer(),
+                                    )
                             else
-                              ..._deviceSection(context),
+                              ..._deviceSection(context, onNetwork),
                             if (room.notice != null) ...[
                               const SizedBox(height: 14),
                               _Notice(text: room.notice!),
@@ -106,6 +161,7 @@ class _RoomPageState extends State<RoomPage> {
                           room: room,
                           sessions: sessions,
                           shortcuts: shortcuts,
+                          layout: layout,
                         ),
                       ),
                     ],
@@ -119,7 +175,10 @@ class _RoomPageState extends State<RoomPage> {
     );
   }
 
-  List<Widget> _deviceSection(BuildContext context) {
+  List<Widget> _deviceSection(
+    BuildContext context,
+    List<FarlyDevice> devices,
+  ) {
     return [
       Padding(
         padding: const EdgeInsets.only(left: 4, bottom: 12),
@@ -128,7 +187,7 @@ class _RoomPageState extends State<RoomPage> {
           style: Theme.of(context).textTheme.labelMedium,
         ),
       ),
-      for (final device in room.devices) ...[
+      for (final device in devices) ...[
         _DeviceCard(
           device: device,
           answered:
@@ -139,6 +198,7 @@ class _RoomPageState extends State<RoomPage> {
             room: room,
             sessions: sessions,
             shortcuts: shortcuts,
+            layout: layout,
           ),
           onEdit: () => _editDevice(context, device),
           onLongPress: () => _deviceActions(context, device),
@@ -148,7 +208,7 @@ class _RoomPageState extends State<RoomPage> {
       Padding(
         padding: const EdgeInsets.only(left: 4, top: 2),
         child: Text(
-          'Tap the pencil or hold a device to rename it, change its icon, or forget it.',
+          'Tap the pencil or hold a device to rename it, change its icon, or delete it. Saved devices from other Wi‑Fi live in the sidebar.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
@@ -189,7 +249,10 @@ class _RoomPageState extends State<RoomPage> {
     final forget = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Forget ${device.name}?'),
+        title: Text('Delete ${device.name}?'),
+        content: const Text(
+          'Removes this TV from Farly on your phone. You can add it again later.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -197,7 +260,7 @@ class _RoomPageState extends State<RoomPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Forget'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -207,20 +270,50 @@ class _RoomPageState extends State<RoomPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.count});
+  const _Header({
+    required this.count,
+    required this.onOpenSaved,
+    this.networkLabel,
+    this.elsewhereCount = 0,
+  });
 
   final int count;
+  final String? networkLabel;
+  final int elsewhereCount;
+  final VoidCallback onOpenSaved;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      padding: const EdgeInsets.fromLTRB(12, 12, 20, 4),
       child: Row(
         children: [
+          IconButton(
+            tooltip: 'Saved devices',
+            onPressed: onOpenSaved,
+            icon: Badge(
+              isLabelVisible: elsewhereCount > 0,
+              label: Text('$elsewhereCount'),
+              child: const Icon(Icons.menu_rounded),
+            ),
+          ),
           const FarlyMark(size: 36),
           const SizedBox(width: 12),
-          Text('Farly', style: Theme.of(context).textTheme.titleLarge),
-          const Spacer(),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Farly', style: Theme.of(context).textTheme.titleLarge),
+                if (networkLabel != null)
+                  Text(
+                    networkLabel!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
+            ),
+          ),
           if (count > 0)
             FarlyPill(
               label: count == 1 ? '1 device' : '$count devices',
@@ -228,6 +321,196 @@ class _Header extends StatelessWidget {
               dot: true,
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _EmptyOnNetwork extends StatelessWidget {
+  const _EmptyOnNetwork({
+    required this.savedCount,
+    required this.onOpenSaved,
+  });
+
+  final int savedCount;
+  final VoidCallback onOpenSaved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Nothing on this Wi‑Fi yet.',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          savedCount == 1
+              ? '1 saved device is on another network. Open the sidebar to delete or open it anyway.'
+              : '$savedCount saved devices are on another network. Open the sidebar to delete or open them anyway.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 14),
+        FarlyPress(
+          label: 'Saved devices',
+          icon: Icons.menu_rounded,
+          onPressed: onOpenSaved,
+        ),
+      ],
+    );
+  }
+}
+
+class _SavedDevicesDrawer extends StatelessWidget {
+  const _SavedDevicesDrawer({
+    required this.room,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onForget,
+  });
+
+  final RoomModel room;
+  final ValueChanged<FarlyDevice> onOpen;
+  final ValueChanged<FarlyDevice> onEdit;
+  final ValueChanged<FarlyDevice> onForget;
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: FarlyColors.night,
+      child: SafeArea(
+        child: ListenableBuilder(
+          listenable: room,
+          builder: (context, _) {
+            final here = room.devicesOnNetwork;
+            final elsewhere = room.devicesElsewhere;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Text(
+                    'Saved devices',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                if (room.network?.label != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                    child: Text(
+                      'This Wi‑Fi · ${room.network!.label}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                Expanded(
+                  child: room.devices.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(
+                            'Scan or add a TV to keep it here.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                          children: [
+                            if (here.isNotEmpty) ...[
+                              _DrawerSectionLabel('On this Wi‑Fi'),
+                              for (final device in here)
+                                _DrawerDeviceTile(
+                                  device: device,
+                                  onNetwork: true,
+                                  onOpen: () => onOpen(device),
+                                  onEdit: () => onEdit(device),
+                                  onForget: () => onForget(device),
+                                ),
+                            ],
+                            if (elsewhere.isNotEmpty) ...[
+                              _DrawerSectionLabel('Other networks'),
+                              for (final device in elsewhere)
+                                _DrawerDeviceTile(
+                                  device: device,
+                                  onNetwork: false,
+                                  onOpen: () => onOpen(device),
+                                  onEdit: () => onEdit(device),
+                                  onForget: () => onForget(device),
+                                ),
+                            ],
+                          ],
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerSectionLabel extends StatelessWidget {
+  const _DrawerSectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+      child: Text(text, style: Theme.of(context).textTheme.labelMedium),
+    );
+  }
+}
+
+class _DrawerDeviceTile extends StatelessWidget {
+  const _DrawerDeviceTile({
+    required this.device,
+    required this.onNetwork,
+    required this.onOpen,
+    required this.onEdit,
+    required this.onForget,
+  });
+
+  final FarlyDevice device;
+  final bool onNetwork;
+  final VoidCallback onOpen;
+  final VoidCallback onEdit;
+  final VoidCallback onForget;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        decoration: FarlySurfaces.glass(),
+        child: ListTile(
+          leading: Opacity(
+            opacity: onNetwork ? 1 : 0.55,
+            child: DeviceGlyph(device: device),
+          ),
+          title: Text(
+            device.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            onNetwork ? device.brand.label : 'Not on this Wi‑Fi',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: onOpen,
+          trailing: PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'edit') onEdit();
+              if (value == 'forget') onForget();
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'edit', child: Text('Edit')),
+              PopupMenuItem(value: 'forget', child: Text('Delete')),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -350,7 +633,7 @@ class _DeviceActionsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             FarlyPress(
-              label: 'Forget',
+              label: 'Delete',
               icon: Icons.delete_outline_rounded,
               expand: true,
               onPressed: () => Navigator.pop(context, 'forget'),
@@ -407,7 +690,7 @@ class _DeviceCard extends StatelessWidget {
                         Text(
                           [
                             device.brand.label,
-                            if (device.host != null) device.host!,
+                            if (kDebugMode && device.host != null) device.host!,
                           ].join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

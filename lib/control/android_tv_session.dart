@@ -91,9 +91,14 @@ class AndroidTvSession extends RemoteSession {
 
     final cert = device.token;
     final key = device.clientKey;
-    if (cert != null && key != null) {
+    if (cert != null && key != null && cert.isNotEmpty && key.isNotEmpty) {
       _identity = AtvIdentity(certificatePem: cert, privateKeyPem: key);
       if (await _connectRemote(host)) return;
+      // Saved cert no longer opens the remote. Mint a fresh identity so the
+      // TV can show a new pairing code instead of staying silent.
+      _identity = null;
+      device = device.copyWith(clearToken: true, clearClientKey: true);
+      onCredentials?.call(device);
     }
     await _startPairing(host);
   }
@@ -207,6 +212,8 @@ class AndroidTvSession extends RemoteSession {
   Future<void> _startPairing(String host) async {
     _say(SessionPhase.connecting, 'Asking the TV for a code');
     try {
+      // Always mint when identity was cleared after a failed remote reconnect;
+      // otherwise reuse a cert already created for this open().
       _identity ??= await _identities();
     } catch (_) {
       _say(SessionPhase.failed, 'Could not prepare a pairing key.');
@@ -216,7 +223,8 @@ class AndroidTvSession extends RemoteSession {
     if (link == null) {
       _say(
         SessionPhase.failed,
-        'TV did not answer. Turn it on and stay on this Wi-Fi.',
+        'TV did not answer pairing. On Google TV open Remotes & accessories, '
+        'allow network remotes, then try again.',
       );
       return;
     }
@@ -234,11 +242,17 @@ class AndroidTvSession extends RemoteSession {
       if (reply == null || !reply.ok || reply.step != expected) {
         await link.close();
         _pairing = null;
-        _say(SessionPhase.failed, 'The TV turned down pairing. Tap Try again.');
+        _say(
+          SessionPhase.failed,
+          'The TV turned down pairing. Check Remotes & accessories, then try again.',
+        );
         return;
       }
     }
-    _say(SessionPhase.pairing, 'Enter the code shown on the TV.');
+    _say(
+      SessionPhase.pairing,
+      'Enter the code on the TV. If none appears, open Remotes & accessories.',
+    );
   }
 
   Future<AtvPairingReply?> _exchange(_AtvLink link, Uint8List message) async {

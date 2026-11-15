@@ -8,9 +8,15 @@ import '../models/remote_action.dart';
 import '../theme/farly_colors.dart';
 
 class HorizonPad extends StatefulWidget {
-  const HorizonPad({super.key, required this.onAction, this.height = 280});
+  const HorizonPad({
+    super.key,
+    required this.onAction,
+    this.onLongPress,
+    this.height = 280,
+  });
 
   final ValueChanged<RemoteAction> onAction;
+  final VoidCallback? onLongPress;
   final double height;
 
   @override
@@ -134,6 +140,7 @@ class _HorizonPadState extends State<HorizonPad> {
             hint: 'Swipe or tap an edge to move. Tap the center to select.',
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
+              onLongPress: widget.onLongPress,
               onTapDown: (details) {
                 setState(() {
                   _finger = details.localPosition;

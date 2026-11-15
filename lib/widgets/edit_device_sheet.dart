@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../models/device_icon.dart';
@@ -6,6 +8,12 @@ import '../theme/farly_colors.dart';
 import 'device_glyph.dart';
 import 'farly_press.dart';
 import 'keys.dart';
+
+/// Top inset from the engine view — modal MediaQuery often zeroes this.
+double _deviceTopInset() {
+  final view = ui.PlatformDispatcher.instance.views.first;
+  return view.viewPadding.top / view.devicePixelRatio;
+}
 
 /// Edits a saved device's display name and icon.
 Future<FarlyDevice?> showEditDeviceSheet(
@@ -49,140 +57,148 @@ class _EditDeviceSheetState extends State<_EditDeviceSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    final topGap = _deviceTopInset() + 12;
+    final bottomGap = MediaQuery.viewPaddingOf(context).bottom;
     final preview = widget.device.copyWith(name: _name.text, icon: _icon);
+
     return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.9,
-        ),
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF243731), FarlyColors.night],
-          ),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-          border: Border(top: BorderSide(color: FarlyColors.edge)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: FarlyColors.mist.withValues(alpha: 0.4),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        DeviceGlyph(device: preview, size: 52),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Text(
-                            'Edit device',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _name,
-                      autofocus: true,
-                      style: const TextStyle(color: FarlyColors.bone),
-                      cursorColor: FarlyColors.horizon,
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _save(),
-                      decoration: InputDecoration(
-                        hintText: 'Name',
-                        hintStyle: const TextStyle(color: FarlyColors.mist),
-                        prefixIcon: const Icon(
-                          Icons.edit_outlined,
-                          color: FarlyColors.mist,
-                          size: 20,
-                        ),
-                        filled: true,
-                        fillColor: const Color(0x14FFFFFF),
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 16,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: FarlyColors.edge),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: FarlyColors.horizon,
-                          ),
-                        ),
-                        errorText: _error,
-                      ),
-                      onChanged: (_) {
-                        if (_error != null) setState(() => _error = null);
-                        setState(() {});
-                      },
-                    ),
-                  ],
-                ),
+      // Keep clear of the Dynamic Island. Keyboard inset comes from the route.
+      padding: EdgeInsets.only(top: topGap),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height - topGap,
+            ),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF243731), FarlyColors.night],
               ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              border: Border(top: BorderSide(color: FarlyColors.edge)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Brand marks',
-                        style: Theme.of(context).textTheme.labelMedium,
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: FarlyColors.mist.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 10),
-                      _IconRow(
-                        icons: DeviceIcon.brands,
-                        selected: _icon,
-                        onSelect: (id) => setState(() => _icon = id),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          DeviceGlyph(device: preview, size: 52),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              'Edit device',
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
-                      Text(
-                        'Emojis',
-                        style: Theme.of(context).textTheme.labelMedium,
-                      ),
-                      const SizedBox(height: 10),
-                      _IconRow(
-                        icons: DeviceIcon.emojis,
-                        selected: _icon,
-                        onSelect: (id) => setState(() => _icon = id),
+                      TextField(
+                        controller: _name,
+                        style: const TextStyle(color: FarlyColors.bone),
+                        cursorColor: FarlyColors.horizon,
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _save(),
+                        decoration: InputDecoration(
+                          hintText: 'Name',
+                          hintStyle: const TextStyle(color: FarlyColors.mist),
+                          prefixIcon: const Icon(
+                            Icons.edit_outlined,
+                            color: FarlyColors.mist,
+                            size: 20,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0x14FFFFFF),
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: FarlyColors.edge,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: const BorderSide(
+                              color: FarlyColors.horizon,
+                            ),
+                          ),
+                          errorText: _error,
+                        ),
+                        onChanged: (_) {
+                          if (_error != null) setState(() => _error = null);
+                          setState(() {});
+                        },
                       ),
                     ],
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                child: FarlyPress(
-                  label: 'Save',
-                  icon: Icons.check_rounded,
-                  filled: true,
-                  expand: true,
-                  onPressed: _save,
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Brand marks',
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                        const SizedBox(height: 10),
+                        _IconRow(
+                          icons: DeviceIcon.brands,
+                          selected: _icon,
+                          onSelect: (id) => setState(() => _icon = id),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Emojis',
+                          style: Theme.of(context).textTheme.labelMedium,
+                        ),
+                        const SizedBox(height: 10),
+                        _IconRow(
+                          icons: DeviceIcon.emojis,
+                          selected: _icon,
+                          onSelect: (id) => setState(() => _icon = id),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: EdgeInsets.fromLTRB(20, 0, 20, 16 + bottomGap),
+                  child: FarlyPress(
+                    label: 'Save',
+                    icon: Icons.check_rounded,
+                    filled: true,
+                    expand: true,
+                    onPressed: _save,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
