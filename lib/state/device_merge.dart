@@ -174,6 +174,11 @@ FarlyDevice _combine(
     icon: saved.icon ?? found.icon,
     nameLocked: saved.nameLocked || found.nameLocked,
     hosts: hosts,
+    menuCommand: saved.menuCommand ?? found.menuCommand,
+    networkKeys: mergeNetworkKeys(
+      newer: found.networkKeys,
+      older: saved.networkKeys,
+    ),
   );
 }
 

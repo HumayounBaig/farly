@@ -1,17 +1,29 @@
 import 'package:farly/app.dart';
 import 'package:farly/control/remote_session.dart';
+import 'package:farly/discovery/network_context.dart';
 import 'package:farly/models/farly_device.dart';
 import 'package:farly/models/remote_action.dart';
+import 'package:farly/models/remote_layout.dart';
 import 'package:farly/models/stream_app.dart';
 import 'package:farly/storage/device_store.dart';
+import 'package:farly/storage/layout_store.dart';
 import 'package:farly/storage/shortcut_store.dart';
+import 'package:farly/widgets/horizon_pad.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+Future<NetworkFingerprint?> _testNetwork() async => const NetworkFingerprint(
+  key: 'ssid:Test',
+  label: 'Test',
+  ssidKey: 'ssid:Test',
+  subnetKey: 'subnet:192.168.1',
+);
 
 void main() {
   testWidgets('scan notice and preview pad', (tester) async {
     await tester.pumpWidget(
       FarlyApp(
+        readNetwork: _testNetwork,
         store: MemoryDeviceStore([
           const FarlyDevice(
             id: 'roku@192.168.1.20',
@@ -69,6 +81,7 @@ void main() {
     ]);
     await tester.pumpWidget(
       FarlyApp(
+        readNetwork: _testNetwork,
         store: store,
         scanDevices: () async => const [],
         sessions: (device, onCredentials) => NotedSession(
@@ -107,6 +120,7 @@ void main() {
     final session = _PairingSession();
     await tester.pumpWidget(
       FarlyApp(
+        readNetwork: _testNetwork,
         store: MemoryDeviceStore([
           const FarlyDevice(
             id: 'androidTv@192.168.1.30',
@@ -163,13 +177,14 @@ void main() {
 
     await tester.pumpWidget(
       FarlyApp(
+        readNetwork: _testNetwork,
         store: store,
         scanDevices: () async => const [],
         sessions: (device, onCredentials) => _ReadySession(),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or forget it.'), findsOneWidget);
+    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or delete it. Saved devices from other Wi‑Fi live in the sidebar.'), findsOneWidget);
     expect(await store.readLastConnected(), isNull);
 
     await tester.tap(find.text('TCL C6K'));
@@ -180,6 +195,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(
       FarlyApp(
+        readNetwork: _testNetwork,
         key: UniqueKey(),
         store: store,
         scanDevices: () async => const [],
@@ -193,7 +209,7 @@ void main() {
 
     await tester.tap(find.bySemanticsLabel('Back to devices'));
     await tester.pumpAndSettle();
-    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or forget it.'), findsOneWidget);
+    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or delete it. Saved devices from other Wi‑Fi live in the sidebar.'), findsOneWidget);
   });
 
   testWidgets('pencil opens rename sheet and saves the name', (tester) async {
@@ -209,6 +225,7 @@ void main() {
     ]);
     await tester.pumpWidget(
       FarlyApp(
+        readNetwork: _testNetwork,
         store: store,
         scanDevices: () async => const [],
         sessions: (device, onCredentials) => NotedSession(
@@ -239,6 +256,7 @@ void main() {
     final shortcuts = MemoryShortcutStore();
     await tester.pumpWidget(
       FarlyApp(
+        readNetwork: _testNetwork,
         store: MemoryDeviceStore([
           const FarlyDevice(
             id: 'roku@192.168.1.20',
@@ -274,7 +292,11 @@ void main() {
 
   testWidgets('address sheet rejects a bad address', (tester) async {
     await tester.pumpWidget(
-      FarlyApp(store: MemoryDeviceStore(), scanDevices: () async => const []),
+      FarlyApp(
+        readNetwork: _testNetwork,
+        store: MemoryDeviceStore(),
+        scanDevices: () async => const [],
+      ),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add by address'));
@@ -283,6 +305,77 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pump();
     expect(find.text('Enter an IPv4 address.'), findsOneWidget);
+  });
+
+  testWidgets('hold the pad to rearrange, hide chrome, edit apps, reset', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(1170, 2532)
+      ..devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    final layout = MemoryLayoutStore();
+    final shortcuts = MemoryShortcutStore();
+    await tester.pumpWidget(
+      FarlyApp(
+        readNetwork: _testNetwork,
+        store: MemoryDeviceStore([
+          const FarlyDevice(
+            id: 'roku@192.168.1.20',
+            name: 'Living room',
+            kind: DeviceKind.screen,
+            brand: DeviceBrand.roku,
+            host: '192.168.1.20',
+            port: 8060,
+          ),
+        ]),
+        scanDevices: () async => const [],
+        sessions: (device, onCredentials) => _ReadySession(),
+        shortcuts: shortcuts,
+        layout: layout,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Living room'));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.byType(HorizonPad));
+    // Jiggle repeats forever, so avoid pumpAndSettle while arranging.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Arrange mode'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.text('Reset'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('Hide Back'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Hidden — tap to show'), findsOneWidget);
+
+    await tester.tap(find.text('Netflix'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('App button 1'), findsOneWidget);
+    await tester.tap(find.text('Disney+'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Disney+'), findsOneWidget);
+
+    await tester.tap(find.text('Reset'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Netflix'), findsOneWidget);
+    expect(await layout.read(), RemoteLayout.defaults);
+    expect((await shortcuts.read()).first.appId, 'netflix');
+
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('Arrange mode'), findsNothing);
+    expect(find.text('Roku'), findsOneWidget);
   });
 }
 

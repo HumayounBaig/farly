@@ -22,6 +22,7 @@ class DeviceIcon {
     DeviceIcon._('brand:roku', label: 'Roku', brand: 'ROKU'),
     DeviceIcon._('brand:tcl', label: 'TCL', brand: 'TCL'),
     DeviceIcon._('brand:hisense', label: 'Hisense', brand: 'HISENSE'),
+    DeviceIcon._('brand:haier', label: 'Haier', brand: 'HAIER'),
     DeviceIcon._('brand:mi', label: 'Xiaomi', brand: 'MI'),
     DeviceIcon._('brand:philips', label: 'Philips', brand: 'PHILIPS'),
     DeviceIcon._('brand:google', label: 'Google TV', brand: 'GOOGLE'),
@@ -63,6 +64,7 @@ class DeviceIcon {
     'ROKU' => const Color(0xFF662D91),
     'TCL' => const Color(0xFFC8102E),
     'HISENSE' => const Color(0xFF00A19B),
+    'HAIER' => const Color(0xFF0055A5),
     'MI' => const Color(0xFFE8590C),
     'PHILIPS' => const Color(0xFF0B5ED7),
     'GOOGLE' => const Color(0xFF4285F4),
@@ -89,6 +91,11 @@ class DeviceIcon {
     final lower = name.toLowerCase();
     if (lower.contains('tcl')) return 'brand:tcl';
     if (lower.contains('hisense')) return 'brand:hisense';
+    if (lower.contains('haier') ||
+        lower.contains('matrix') ||
+        RegExp(r'\baqua\b').hasMatch(lower)) {
+      return 'brand:haier';
+    }
     if (lower.contains('philips')) return 'brand:philips';
     if (lower.contains('xiaomi') || RegExp(r'\bmi\s?tv').hasMatch(lower)) {
       return 'brand:mi';

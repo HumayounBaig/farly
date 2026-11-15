@@ -1,41 +1,67 @@
 import 'package:flutter/foundation.dart';
 
+import '../discovery/network_context.dart';
 import '../discovery/room_scan.dart';
 import '../models/farly_device.dart';
 import '../storage/device_store.dart';
 import 'device_merge.dart';
 
+typedef NetworkReader = Future<NetworkFingerprint?> Function();
+
 class RoomModel extends ChangeNotifier {
   RoomModel({
     required this.store,
     Future<List<FarlyDevice>> Function()? scanDevices,
+    NetworkReader? readNetwork,
     this.retryDelay = const Duration(seconds: 2),
-  }) : _scanDevices = scanDevices ?? scanRoom;
+  }) : _scanDevices = scanDevices ?? scanRoom,
+       _readNetwork = readNetwork ?? readNetworkFingerprint;
 
   final DeviceStore store;
   final Duration retryDelay;
   final Future<List<FarlyDevice>> Function() _scanDevices;
+  final NetworkReader _readNetwork;
 
   List<FarlyDevice> devices = const [];
   DateTime? lastScanAt;
   bool scanning = false;
   String? notice;
   String? lastConnectedId;
+  Map<String, String> lastConnectedByNetwork = const {};
+  NetworkFingerprint? network;
   FarlyDevice? _autoOpen;
   var _scannedThisSession = false;
 
   FarlyDevice? get lastConnected {
     final id = lastConnectedId;
     if (id == null) return null;
-    for (final device in devices) {
-      if (device.id == id) return device;
+    return _deviceForId(id);
+  }
+
+  /// Devices Farly believes belong on the current Wi-Fi.
+  List<FarlyDevice> get devicesOnNetwork => [
+    for (final device in devices)
+      if (isOnCurrentNetwork(device)) device,
+  ];
+
+  /// Saved devices that belong to another network (or nowhere yet).
+  List<FarlyDevice> get devicesElsewhere => [
+    for (final device in devices)
+      if (!isOnCurrentNetwork(device)) device,
+  ];
+
+  bool isOnCurrentNetwork(FarlyDevice device) {
+    final current = network;
+    if (current == null) return true;
+    if (current.matches(device.networkKeys)) return true;
+    if (device.lastSeen != null && device.lastSeen == lastScanAt) return true;
+    final hostSubnet = subnetKeyForHost(device.host);
+    if (hostSubnet != null &&
+        current.subnetKey != null &&
+        hostSubnet == current.subnetKey) {
+      return true;
     }
-    final host = id.contains('@') ? id.split('@').last : null;
-    if (host == null || host.isEmpty) return null;
-    for (final device in devices) {
-      if (device.host == host || device.hosts.contains(host)) return device;
-    }
-    return null;
+    return false;
   }
 
   Future<void> load() async {
@@ -51,13 +77,52 @@ class RoomModel extends ChangeNotifier {
     } catch (_) {
       lastConnectedId = null;
     }
-    final last = lastConnected;
-    if (last != null &&
-        last.kind == DeviceKind.screen &&
-        last.brand.commandsReady) {
-      _autoOpen = last;
+    try {
+      lastConnectedByNetwork = await store.readLastConnectedByNetwork();
+    } catch (_) {
+      lastConnectedByNetwork = const {};
+    }
+    await refreshNetwork(openLastRemote: true);
+  }
+
+  /// Re-reads Wi-Fi and optionally queues the last remote for this network.
+  Future<void> refreshNetwork({bool openLastRemote = false}) async {
+    try {
+      network = await _readNetwork();
+    } catch (_) {
+      network = null;
+    }
+    if (openLastRemote) {
+      _autoOpen = _remoteForCurrentNetwork();
     }
     notifyListeners();
+  }
+
+  FarlyDevice? _remoteForCurrentNetwork() {
+    final key = network?.key;
+    final id = key == null
+        ? lastConnectedId
+        : lastConnectedByNetwork[key] ?? lastConnectedId;
+    if (id == null) return null;
+    final device = _deviceForId(id);
+    if (device == null) return null;
+    if (device.kind != DeviceKind.screen || !device.brand.commandsReady) {
+      return null;
+    }
+    if (network != null && !isOnCurrentNetwork(device)) return null;
+    return device;
+  }
+
+  FarlyDevice? _deviceForId(String id) {
+    for (final device in devices) {
+      if (device.id == id) return device;
+    }
+    final host = id.contains('@') ? id.split('@').last : null;
+    if (host == null || host.isEmpty) return null;
+    for (final device in devices) {
+      if (device.host == host || device.hosts.contains(host)) return device;
+    }
+    return null;
   }
 
   /// The remote to reopen at launch, handed out once.
@@ -74,9 +139,11 @@ class RoomModel extends ChangeNotifier {
     notifyListeners();
     try {
       if (!roomScanSupported) {
-        notice = 'Scanning runs in the iOS and Android app. The browser cannot see your Wi-Fi.';
+        notice =
+            'Scanning runs in the iOS and Android app. The browser cannot see your Wi-Fi.';
         return;
       }
+      await refreshNetwork();
       var found = await _scanDevices();
       if (found.isEmpty && !_scannedThisSession) {
         // On a fresh iOS install the Local Network prompt hides the first scan.
@@ -85,7 +152,10 @@ class RoomModel extends ChangeNotifier {
       }
       _scannedThisSession = true;
       final seenAt = DateTime.now();
-      await _apply(mergeDevices(saved: devices, found: found, seenAt: seenAt));
+      final stamped = [
+        for (final device in found) _stampNetwork(device),
+      ];
+      await _apply(mergeDevices(saved: devices, found: stamped, seenAt: seenAt));
       lastScanAt = seenAt;
       if (found.isEmpty) {
         notice =
@@ -103,7 +173,7 @@ class RoomModel extends ChangeNotifier {
     await _apply(
       mergeDevices(
         saved: devices,
-        found: [device],
+        found: [_stampNetwork(device)],
         seenAt: DateTime.now(),
         matchByName: false,
       ),
@@ -116,14 +186,20 @@ class RoomModel extends ChangeNotifier {
       (current) => current.id == device.id || sameDevice(current, device),
     );
     if (index < 0) {
-      devices = [...devices, device];
+      devices = [...devices, _stampNetwork(device)];
     } else {
       final previous = devices[index];
-      final merged = device.copyWith(
-        hosts: mergeHostHistory(
-          primary: device.host,
-          newer: device.candidateHosts,
-          older: previous.candidateHosts,
+      final merged = _stampNetwork(
+        device.copyWith(
+          hosts: mergeHostHistory(
+            primary: device.host,
+            newer: device.candidateHosts,
+            older: previous.candidateHosts,
+          ),
+          networkKeys: mergeNetworkKeys(
+            newer: device.networkKeys,
+            older: previous.networkKeys,
+          ),
         ),
       );
       devices = [
@@ -131,8 +207,7 @@ class RoomModel extends ChangeNotifier {
           if (i == index) merged else devices[i],
       ];
       if (lastConnectedId == previous.id && previous.id != merged.id) {
-        lastConnectedId = merged.id;
-        await store.writeLastConnected(merged.id);
+        await _rewriteLastConnectedIds(previous.id, merged.id);
       }
     }
     await store.write(devices);
@@ -140,16 +215,17 @@ class RoomModel extends ChangeNotifier {
   }
 
   /// Scans once and returns the saved TV if it answered on a new address.
-  ///
-  /// Used when the phone hops between 2.4 GHz / 5 GHz access points and the
-  /// TV's DHCP lease moved.
   Future<FarlyDevice?> relocate(FarlyDevice device) async {
     if (!roomScanSupported) return null;
     try {
+      await refreshNetwork();
       final found = await _scanDevices();
       if (found.isEmpty) return null;
       final seenAt = DateTime.now();
-      await _apply(mergeDevices(saved: devices, found: found, seenAt: seenAt));
+      final stamped = [
+        for (final item in found) _stampNetwork(item),
+      ];
+      await _apply(mergeDevices(saved: devices, found: stamped, seenAt: seenAt));
       lastScanAt = seenAt;
       notifyListeners();
       final match = findDevice(devices, device);
@@ -157,7 +233,6 @@ class RoomModel extends ChangeNotifier {
       if (match.host == null) return null;
       if (match.host == device.host &&
           match.candidateHosts.every(device.candidateHosts.contains)) {
-        // Same address we already tried; nothing new to open.
         return null;
       }
       return match;
@@ -166,12 +241,48 @@ class RoomModel extends ChangeNotifier {
     }
   }
 
-  /// Remembers the device whose remote just connected, for the next launch.
+  /// Remembers the device whose remote just connected, for this Wi-Fi.
   Future<void> markConnected(FarlyDevice device) async {
     if (device.brand == DeviceBrand.preview) return;
-    if (lastConnectedId == device.id) return;
-    lastConnectedId = device.id;
-    await store.writeLastConnected(device.id);
+    if (network == null) {
+      try {
+        network = await _readNetwork();
+      } catch (_) {
+        network = null;
+      }
+    }
+    final stamped = _stampNetwork(device);
+    final networkKey = network?.key;
+    final needsStamp = stamped.networkKeys.any(
+      (item) => !device.networkKeys.contains(item),
+    );
+    final needsLast = lastConnectedId != stamped.id;
+    final needsByNet =
+        networkKey != null && lastConnectedByNetwork[networkKey] != stamped.id;
+    if (!needsStamp && !needsLast && !needsByNet) return;
+
+    if (needsStamp) {
+      final index = devices.indexWhere(
+        (current) => current.id == stamped.id || sameDevice(current, stamped),
+      );
+      if (index >= 0) {
+        devices = [
+          for (var i = 0; i < devices.length; i++)
+            if (i == index) stamped else devices[i],
+        ];
+        await store.write(devices);
+      }
+    }
+    if (needsLast) {
+      lastConnectedId = stamped.id;
+      await store.writeLastConnected(stamped.id);
+    }
+    if (networkKey != null && needsByNet) {
+      final next = {...lastConnectedByNetwork, networkKey: stamped.id};
+      lastConnectedByNetwork = next;
+      await store.writeLastConnectedByNetwork(next);
+    }
+    notifyListeners();
   }
 
   Future<void> forget(FarlyDevice device) async {
@@ -184,7 +295,46 @@ class RoomModel extends ChangeNotifier {
       lastConnectedId = null;
       await store.writeLastConnected(null);
     }
+    final pruned = {
+      for (final entry in lastConnectedByNetwork.entries)
+        if (entry.value != device.id) entry.key: entry.value,
+    };
+    if (pruned.length != lastConnectedByNetwork.length) {
+      lastConnectedByNetwork = pruned;
+      await store.writeLastConnectedByNetwork(pruned);
+    }
     notifyListeners();
+  }
+
+  FarlyDevice _stampNetwork(FarlyDevice device) {
+    final current = network;
+    if (current == null) {
+      final hostKey = subnetKeyForHost(device.host);
+      if (hostKey == null) return device;
+      return device.copyWith(
+        networkKeys: mergeNetworkKeys(
+          newer: [hostKey],
+          older: device.networkKeys,
+        ),
+      );
+    }
+    return device.copyWith(
+      networkKeys: mergeNetworkKeys(
+        newer: current.stampKeys,
+        older: device.networkKeys,
+      ),
+    );
+  }
+
+  Future<void> _rewriteLastConnectedIds(String from, String to) async {
+    lastConnectedId = to;
+    await store.writeLastConnected(to);
+    final next = {
+      for (final entry in lastConnectedByNetwork.entries)
+        entry.key: entry.value == from ? to : entry.value,
+    };
+    lastConnectedByNetwork = next;
+    await store.writeLastConnectedByNetwork(next);
   }
 
   /// Saves a merged list, following the last connected device if the merge
@@ -196,8 +346,7 @@ class RoomModel extends ChangeNotifier {
     if (previous == null) return;
     final moved = findDevice(devices, previous);
     if (moved != null && moved.id != previous.id) {
-      lastConnectedId = moved.id;
-      await store.writeLastConnected(moved.id);
+      await _rewriteLastConnectedIds(previous.id, moved.id);
     }
   }
 }

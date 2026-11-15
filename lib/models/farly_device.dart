@@ -95,6 +95,7 @@ class FarlyDevice {
     this.nameLocked = false,
     this.hosts = const [],
     this.menuCommand,
+    this.networkKeys = const [],
   });
 
   final String id;
@@ -125,6 +126,9 @@ class FarlyDevice {
   /// Which alternate Menu key this TV should use ([MenuCommand.id]).
   final String? menuCommand;
 
+  /// Wi-Fi fingerprints where this device has been seen (`ssid:` / `subnet:`).
+  final List<String> networkKeys;
+
   static String idFor(DeviceBrand brand, String host) => '${brand.name}@$host';
 
   static const preview = FarlyDevice(
@@ -149,6 +153,7 @@ class FarlyDevice {
     bool? nameLocked,
     List<String>? hosts,
     String? menuCommand,
+    List<String>? networkKeys,
     bool clearToken = false,
     bool clearClientKey = false,
     bool clearIcon = false,
@@ -171,6 +176,7 @@ class FarlyDevice {
       nameLocked: nameLocked ?? this.nameLocked,
       hosts: hosts ?? this.hosts,
       menuCommand: clearMenuCommand ? null : menuCommand ?? this.menuCommand,
+      networkKeys: networkKeys ?? this.networkKeys,
     );
   }
 
@@ -209,10 +215,12 @@ class FarlyDevice {
     'nameLocked': nameLocked,
     'hosts': hosts,
     'menuCommand': menuCommand,
+    'networkKeys': networkKeys,
   };
 
   factory FarlyDevice.fromJson(Map<String, dynamic> json) {
     final rawHosts = json['hosts'];
+    final rawNetworks = json['networkKeys'];
     return FarlyDevice(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? 'Device',
@@ -237,8 +245,36 @@ class FarlyDevice {
             ]
           : const [],
       menuCommand: json['menuCommand'] as String?,
+      networkKeys: rawNetworks is List
+          ? [
+              for (final item in rawNetworks)
+                if (item is String && item.isNotEmpty) item,
+            ]
+          : const [],
     );
   }
+}
+
+/// Keeps the newest network key first, then older fingerprints.
+List<String> mergeNetworkKeys({
+  List<String> newer = const [],
+  List<String> older = const [],
+  int keep = 8,
+}) {
+  final out = <String>[];
+  void add(String? value) {
+    if (value == null || value.isEmpty || out.contains(value)) return;
+    out.add(value);
+  }
+
+  for (final value in newer) {
+    add(value);
+  }
+  for (final value in older) {
+    add(value);
+  }
+  if (out.length <= keep) return out;
+  return out.sublist(0, keep);
 }
 
 /// Keeps the newest address first, then older ones this TV has used.

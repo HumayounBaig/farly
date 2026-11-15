@@ -101,6 +101,9 @@ bool _castIsTv(String model) {
   return const [
     'tcl',
     'hisense',
+    'haier',
+    'aqua',
+    'matrix',
     'bravia',
     'philips',
     'sharp',
@@ -129,6 +132,7 @@ FarlyDevice asAndroidTv(FarlyDevice cast) {
     icon: cast.icon,
     nameLocked: cast.nameLocked,
     hosts: cast.hosts,
+    networkKeys: cast.networkKeys,
   );
 }
 

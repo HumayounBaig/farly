@@ -19,6 +19,9 @@ const _sony = (label: 'SONY', color: Color(0xFF1A1A1A));
 final _nameMakers = <(RegExp, TvMaker)>[
   (RegExp(r'\btcl'), (label: 'TCL', color: Color(0xFFC8102E))),
   (RegExp(r'\bhisense'), (label: 'HISENSE', color: Color(0xFF00A19B))),
+  (RegExp(r'\bhaier'), (label: 'HAIER', color: Color(0xFF0055A5))),
+  (RegExp(r'\baqua\b'), (label: 'AQUA', color: Color(0xFF0090C4))),
+  (RegExp(r'\bmatrix'), (label: 'HAIER', color: Color(0xFF0055A5))),
   (RegExp(r'\bphilips'), (label: 'PHILIPS', color: Color(0xFF0B5ED7))),
   (RegExp(r'\bsharp'), (label: 'SHARP', color: Color(0xFFD7002F))),
   (RegExp(r'\btoshiba'), (label: 'TOSHIBA', color: Color(0xFFB30000))),

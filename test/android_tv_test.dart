@@ -35,6 +35,21 @@ void main() {
     expect(atvMenuKeyCode('allApps'), 284);
     expect(atvKeyCode(RemoteAction.brightnessUp), 220);
     expect(atvKeyCode(RemoteAction.input), 178);
+
+    // Wire still maps brightness, but the session hides it — phone brightness
+    // keycodes do nothing to TCL / Google TV picture output.
+    final session = AndroidTvSession(
+      device: const FarlyDevice(
+        id: 'androidTv@192.168.1.30',
+        name: 'TCL C6K',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.androidTv,
+        host: '192.168.1.30',
+      ),
+    );
+    expect(session.supports(RemoteAction.brightnessUp), isFalse);
+    expect(session.supports(RemoteAction.brightnessDown), isFalse);
+    expect(session.supports(RemoteAction.volumeUp), isTrue);
   });
 
   test('wire messages encode the fields the TV reads', () {
@@ -132,6 +147,13 @@ void main() {
       port: 8009,
       attributes: {'md': 'Smart TV', 'fn': 'Living Room TV'},
     );
+    final haier = classifyService(
+      type: '_googlecast._tcp',
+      name: 'Haier-Matrix-0123456789abcdef0123456789abcdef',
+      host: '192.168.1.32',
+      port: 8009,
+      attributes: {'md': 'Haier Matrix TV', 'fn': 'Bedroom'},
+    );
     final speaker = classifyService(
       type: '_googlecast._tcp',
       name: 'Google-Nest-Mini-0123456789abcdef0123456789abcdef',
@@ -142,6 +164,8 @@ void main() {
     expect(tcl?.brand, DeviceBrand.androidTv);
     expect(tcl?.name, 'Living Room TV');
     expect(tcl?.port, 6466);
+    expect(haier?.brand, DeviceBrand.androidTv);
+    expect(haier?.name, 'Bedroom');
     expect(speaker?.brand, DeviceBrand.chromecast);
     expect(speaker?.name, 'Google-Nest-Mini');
     expect(DeviceBrand.androidTv.commandsReady, isTrue);
