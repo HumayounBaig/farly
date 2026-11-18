@@ -18,7 +18,6 @@ import '../widgets/bottom_aligned.dart';
 import '../widgets/device_glyph.dart';
 import '../widgets/edit_shortcut_sheet.dart';
 import '../widgets/farly_backdrop.dart';
-import '../widgets/farly_pill.dart';
 import '../widgets/farly_press.dart';
 import '../widgets/horizon_pad.dart';
 import '../widgets/jiggle.dart';
@@ -195,44 +194,97 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     });
   }
 
-  void _reorderVisibleBlocks(
-    List<RemoteBlockId> visible,
-    int oldIndex,
-    int newIndex,
-  ) {
-    final next = [...visible];
+  void _reorderBlocks(int oldIndex, int newIndex) {
+    final next = [..._layout.blocks];
+    if (oldIndex < 0 || oldIndex >= next.length) return;
+    if (newIndex < 0 || newIndex > next.length) return;
     final item = next.removeAt(oldIndex);
+    next.insert(newIndex.clamp(0, next.length), item);
+    HapticFeedback.selectionClick();
+    _persistLayout(_layout.copyWith(blocks: next));
+  }
+
+  void _moveBlock(int index, int delta) {
+    final next = [..._layout.blocks];
+    final newIndex = index + delta;
+    if (newIndex < 0 || newIndex >= next.length) return;
+    final item = next.removeAt(index);
     next.insert(newIndex, item);
-    final hidden = [
-      for (final block in _layout.blocks)
-        if (!next.contains(block)) block,
-    ];
-    _persistLayout(_layout.copyWith(blocks: [...next, ...hidden]));
+    HapticFeedback.selectionClick();
+    _persistLayout(_layout.copyWith(blocks: next));
+  }
+
+  void _hideBlock(RemoteBlockId id) {
+    if (!_layout.blocks.contains(id)) return;
+    // Keep at least one block so arrange mode still has something to show.
+    if (_layout.blocks.length <= 1) return;
+    HapticFeedback.lightImpact();
+    _persistLayout(
+      _layout.copyWith(
+        blocks: [for (final block in _layout.blocks) if (block != id) block],
+      ),
+    );
+  }
+
+  void _showBlock(RemoteBlockId id) {
+    if (_layout.blocks.contains(id)) return;
+    HapticFeedback.selectionClick();
+    _persistLayout(_layout.copyWith(blocks: [..._layout.blocks, id]));
   }
 
   void _reorderChrome(int oldIndex, int newIndex) {
     final chrome = [..._layout.chrome];
+    if (oldIndex < 0 || oldIndex >= chrome.length) return;
+    if (newIndex < 0 || newIndex > chrome.length) return;
     final item = chrome.removeAt(oldIndex);
-    chrome.insert(newIndex, item);
+    chrome.insert(newIndex.clamp(0, chrome.length), item);
+    HapticFeedback.selectionClick();
     _persistLayout(_layout.copyWith(chrome: chrome));
   }
 
   void _hideChrome(ChromeId id) {
     final chrome = [for (final item in _layout.chrome) if (item != id) item];
+    HapticFeedback.lightImpact();
     _persistLayout(_layout.copyWith(chrome: chrome));
   }
 
   void _showChrome(ChromeId id) {
     if (_layout.chrome.contains(id)) return;
+    HapticFeedback.selectionClick();
     _persistLayout(_layout.copyWith(chrome: [..._layout.chrome, id]));
   }
 
   void _reorderShortcuts(int oldIndex, int newIndex) {
     final slots = [..._slots];
+    if (oldIndex < 0 || oldIndex >= slots.length) return;
+    if (newIndex < 0 || newIndex > slots.length) return;
     final item = slots.removeAt(oldIndex);
-    slots.insert(newIndex, item);
+    slots.insert(newIndex.clamp(0, slots.length), item);
+    HapticFeedback.selectionClick();
     setState(() => _slots = slots);
     _shortcutStore.write(slots);
+  }
+
+  String _blockLabel(RemoteBlockId id) {
+    return switch (id) {
+      RemoteBlockId.powerRow => 'Power row',
+      RemoteBlockId.shortcuts => 'Apps',
+      RemoteBlockId.transport => 'Play controls',
+      RemoteBlockId.levels => 'Volume',
+      RemoteBlockId.chrome => 'Menu keys',
+      RemoteBlockId.pad => 'D-pad',
+    };
+  }
+
+  IconData _blockIcon(RemoteBlockId id) {
+    return switch (id) {
+      RemoteBlockId.powerRow => Icons.power_settings_new_rounded,
+      RemoteBlockId.shortcuts => Icons.apps_rounded,
+      RemoteBlockId.transport => Icons.play_arrow_rounded,
+      RemoteBlockId.levels => Icons.volume_up_rounded,
+      RemoteBlockId.chrome => Icons.menu_rounded,
+      RemoteBlockId.pad => Icons.gamepad_rounded,
+    };
   }
 
   RockerSegment _segment(RemoteAction action, IconData icon) {
@@ -310,6 +362,35 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     );
   }
 
+  Widget _volumeRail({double? height}) {
+    return LevelRail(
+      icon: Icons.volume_up_rounded,
+      label: 'Volume',
+      height: height ?? 156,
+      steps: 2,
+      onIncrease: () => _remote.send(RemoteAction.volumeUp),
+      onDecrease: () => _remote.send(RemoteAction.volumeDown),
+      onIconTap: () => _remote.send(RemoteAction.mute),
+      increaseKey: const ValueKey(RemoteAction.volumeUp),
+      decreaseKey: const ValueKey(RemoteAction.volumeDown),
+      iconKey: const ValueKey(RemoteAction.mute),
+    );
+  }
+
+  Widget _brightnessRail({double? height}) {
+    return LevelRail(
+      icon: Icons.wb_sunny_rounded,
+      label: 'Brightness',
+      height: height ?? 156,
+      steps: 5,
+      onIncrease: () => _remote.send(RemoteAction.brightnessUp),
+      onDecrease: () => _remote.send(RemoteAction.brightnessDown),
+      increaseKey: const ValueKey(RemoteAction.brightnessUp),
+      decreaseKey: const ValueKey(RemoteAction.brightnessDown),
+    );
+  }
+
+  /// Stacked rails when levels sit alone (not beside the pad).
   Widget _levelsRails({required bool showBrightness, double? height}) {
     return IgnorePointer(
       ignoring: _editing,
@@ -317,28 +398,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          LevelRail(
-            icon: Icons.volume_up_rounded,
-            label: 'Volume',
-            height: height ?? 156,
-            onIncrease: () => _remote.send(RemoteAction.volumeUp),
-            onDecrease: () => _remote.send(RemoteAction.volumeDown),
-            onIconTap: () => _remote.send(RemoteAction.mute),
-            increaseKey: const ValueKey(RemoteAction.volumeUp),
-            decreaseKey: const ValueKey(RemoteAction.volumeDown),
-            iconKey: const ValueKey(RemoteAction.mute),
-          ),
+          _volumeRail(height: height),
           if (showBrightness) ...[
             const SizedBox(width: 22),
-            LevelRail(
-              icon: Icons.wb_sunny_rounded,
-              label: 'Brightness',
-              height: height ?? 156,
-              onIncrease: () => _remote.send(RemoteAction.brightnessUp),
-              onDecrease: () => _remote.send(RemoteAction.brightnessDown),
-              increaseKey: const ValueKey(RemoteAction.brightnessUp),
-              decreaseKey: const ValueKey(RemoteAction.brightnessDown),
-            ),
+            _brightnessRail(height: height),
           ],
         ],
       ),
@@ -353,17 +416,25 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     );
   }
 
+  /// Default control cluster: volume | pad | brightness.
   Widget _padWithRails({
     required bool showBrightness,
     required double padHeight,
   }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _levelsRails(showBrightness: showBrightness, height: padHeight),
-        const SizedBox(width: 14),
-        Expanded(child: _pad(padHeight: padHeight)),
-      ],
+    return IgnorePointer(
+      ignoring: _editing,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _volumeRail(height: padHeight),
+          const SizedBox(width: 14),
+          Expanded(child: _pad(padHeight: padHeight)),
+          if (showBrightness) ...[
+            const SizedBox(width: 14),
+            _brightnessRail(height: padHeight),
+          ],
+        ],
+      ),
     );
   }
 
@@ -377,35 +448,41 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     return switch (id) {
       RemoteBlockId.powerRow => _wrapEdit(
         const ValueKey(RemoteBlockId.powerRow),
-        Row(
-          children: [
-            RoundKey(
-              icon: Icons.arrow_back_rounded,
-              label: 'Back to devices',
-              size: 52,
-              onPressed: _editing ? null : () => Navigator.of(context).pop(),
-            ),
-            const Spacer(),
-            RoundKey(
-              key: const ValueKey(RemoteAction.power),
-              icon: Icons.power_settings_new_rounded,
-              label: RemoteAction.power.label,
-              size: 52,
-              tint: FarlyColors.clay,
-              onPressed: _editing
-                  ? null
-                  : () => _remote.send(RemoteAction.power),
-            ),
-          ],
+        Align(
+          alignment: Alignment.centerRight,
+          child: RoundKey(
+            key: const ValueKey(RemoteAction.power),
+            icon: Icons.power_settings_new_rounded,
+            label: RemoteAction.power.label,
+            size: 52,
+            tint: FarlyColors.clay,
+            onPressed: _editing
+                ? null
+                : () => _remote.send(RemoteAction.power),
+          ),
         ),
       ),
-      RemoteBlockId.shortcuts => shortcuts.isEmpty
+      RemoteBlockId.shortcuts => (!_editing && shortcuts.isEmpty)
           ? const SizedBox.shrink()
           : _wrapEdit(
               const ValueKey(RemoteBlockId.shortcuts),
               Column(
                 children: [
-                  if (_editing)
+                  if (_editing && shortcuts.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 18,
+                      ),
+                      decoration: FarlySurfaces.glass(radius: 20),
+                      child: Text(
+                        'No app buttons on this TV',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    )
+                  else if (_editing)
                     // Horizontal so it doesn't fight the parent vertical list.
                     SizedBox(
                       height: 64,
@@ -427,7 +504,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                             ),
                             child: SizedBox(
                               width: 140,
-                              child: ReorderableDelayedDragStartListener(
+                              child: ReorderableDragStartListener(
                                 index: index,
                                 child: _ShortcutButton(
                                   shortcut: shortcuts[index],
@@ -457,7 +534,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                   const SizedBox(height: 6),
                   Text(
                     _editing
-                        ? 'Tap an app to change it. Hold & drag to reorder.'
+                        ? 'Tap an app to change it. Drag to reorder.'
                         : 'Hold an app to change it. Hold the pad to rearrange.',
                     textAlign: TextAlign.center,
                     maxLines: 1,
@@ -595,30 +672,67 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                   final showBrightness = session.supports(
                     RemoteAction.brightnessUp,
                   );
-                  final blocks = [
-                    for (final id in _layout.blocks)
-                      if (id != RemoteBlockId.shortcuts || shortcuts.isNotEmpty)
-                        id,
+                  // In arrange mode show every saved visible block, even empty
+                  // shortcuts, so hide/reorder never fights capability filters.
+                  final blocks = _editing
+                      ? _layout.blocks
+                      : [
+                          for (final id in _layout.blocks)
+                            if (id != RemoteBlockId.shortcuts ||
+                                shortcuts.isNotEmpty)
+                              id,
+                        ];
+                  final hiddenBlocks = [
+                    for (final id in RemoteBlockId.values)
+                      if (!_layout.blocks.contains(id)) id,
                   ];
                   return Column(
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOut,
+                        color: _editing
+                            ? FarlyColors.arrangeWash
+                            : Colors.transparent,
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
                         child: Row(
                           children: [
+                            if (!_editing)
+                              Pressable(
+                                label: 'Back to devices',
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Padding(
+                                  padding: EdgeInsets.only(right: 8),
+                                  child: Icon(
+                                    Icons.arrow_back_rounded,
+                                    size: 24,
+                                    color: FarlyColors.bone,
+                                  ),
+                                ),
+                              ),
                             DeviceGlyph(device: live, size: 44),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    live.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.titleMedium,
+                                  Row(
+                                    children: [
+                                      if (!_editing) ...[
+                                        _PhaseDot(phase: _remote.phase),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      Expanded(
+                                        child: Text(
+                                          live.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
@@ -663,7 +777,18 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                 ),
                               ),
                             ] else
-                              _PhasePill(phase: _remote.phase),
+                              Pressable(
+                                label: 'Arrange remote',
+                                onPressed: _enterEdit,
+                                child: const Padding(
+                                  padding: EdgeInsets.all(6),
+                                  child: Icon(
+                                    Icons.tune_rounded,
+                                    size: 22,
+                                    color: FarlyColors.mist,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -677,68 +802,237 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                         ),
                       Expanded(
                         child: _editing
-                            ? ReorderableListView.builder(
-                                padding: const EdgeInsets.fromLTRB(
-                                  20,
-                                  16,
-                                  20,
-                                  16,
-                                ),
-                                buildDefaultDragHandles: false,
-                                proxyDecorator: _proxyDecorator,
-                                onReorderStart: (_) => _setDragging(true),
-                                onReorderEnd: (_) => _setDragging(false),
-                                itemCount: blocks.length,
-                                onReorderItem: (oldIndex, newIndex) {
-                                  _reorderVisibleBlocks(
-                                    blocks,
-                                    oldIndex,
-                                    newIndex,
-                                  );
-                                },
-                                itemBuilder: (context, index) {
-                                  final id = blocks[index];
-                                  final body = _block(
-                                    id,
-                                    session: session,
-                                    shortcuts: shortcuts,
-                                    showBrightness: showBrightness,
-                                    padHeight: padHeight,
-                                  );
-                                  return Padding(
-                                    key: ValueKey(id),
-                                    padding: const EdgeInsets.only(bottom: 14),
-                                    child: Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        // Immediate grab from the handle.
-                                        ReorderableDragStartListener(
-                                          index: index,
-                                          child: const Padding(
-                                            padding: EdgeInsets.only(
-                                              top: 18,
-                                              right: 10,
-                                            ),
-                                            child: Icon(
-                                              Icons.drag_handle_rounded,
-                                              size: 28,
-                                              color: FarlyColors.mist,
-                                            ),
-                                          ),
-                                        ),
-                                        // Hold anywhere on the block to drag.
-                                        Expanded(
-                                          child:
-                                              ReorderableDelayedDragStartListener(
-                                                index: index,
-                                                child: body,
-                                              ),
-                                        ),
-                                      ],
+                            ? CustomScrollView(
+                                slivers: [
+                                  SliverPadding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      16,
+                                      20,
+                                      0,
                                     ),
-                                  );
-                                },
+                                    sliver: SliverToBoxAdapter(
+                                      child: Text(
+                                        'Drag, use arrows, or hide any row.',
+                                        textAlign: TextAlign.center,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.copyWith(
+                                              color: FarlyColors.horizon,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (hiddenBlocks.isNotEmpty)
+                                    SliverPadding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        20,
+                                        14,
+                                        20,
+                                        0,
+                                      ),
+                                      sliver: SliverToBoxAdapter(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Hidden — tap to show',
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.bodySmall,
+                                            ),
+                                            const SizedBox(height: 10),
+                                            Wrap(
+                                              spacing: 10,
+                                              runSpacing: 10,
+                                              children: [
+                                                for (final id in hiddenBlocks)
+                                                  Pressable(
+                                                    label:
+                                                        'Show ${_blockLabel(id)}',
+                                                    onPressed: () =>
+                                                        _showBlock(id),
+                                                    child: Opacity(
+                                                      opacity: 0.7,
+                                                      child: Container(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .fromLTRB(
+                                                              12,
+                                                              10,
+                                                              14,
+                                                              10,
+                                                            ),
+                                                        decoration:
+                                                            FarlySurfaces.glass(
+                                                              radius: 18,
+                                                            ),
+                                                        child: Row(
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
+                                                          children: [
+                                                            Icon(
+                                                              _blockIcon(id),
+                                                              size: 18,
+                                                              color: FarlyColors
+                                                                  .bone,
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            Text(
+                                                              _blockLabel(id),
+                                                              style:
+                                                                  const TextStyle(
+                                                                    color:
+                                                                        FarlyColors
+                                                                            .bone,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w600,
+                                                                  ),
+                                                            ),
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            const Icon(
+                                                              Icons.add_rounded,
+                                                              size: 16,
+                                                              color: FarlyColors
+                                                                  .horizon,
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  const SliverToBoxAdapter(
+                                    child: SizedBox(height: 12),
+                                  ),
+                                  SliverPadding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                    ),
+                                    sliver: SliverReorderableList(
+                                      itemCount: blocks.length,
+                                      proxyDecorator: _proxyDecorator,
+                                      onReorderStart: (_) =>
+                                          _setDragging(true),
+                                      onReorderEnd: (_) =>
+                                          _setDragging(false),
+                                      onReorderItem: _reorderBlocks,
+                                      itemBuilder: (context, index) {
+                                        final id = blocks[index];
+                                        final body = _block(
+                                          id,
+                                          session: session,
+                                          shortcuts: shortcuts,
+                                          showBrightness: showBrightness,
+                                          padHeight: padHeight,
+                                        );
+                                        final canHide = blocks.length > 1;
+                                        return Padding(
+                                          key: ValueKey(id),
+                                          padding: const EdgeInsets.only(
+                                            bottom: 14,
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      _blockLabel(id),
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .labelMedium
+                                                          ?.copyWith(
+                                                            color: FarlyColors
+                                                                .mist,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  _MoveChip(
+                                                    label:
+                                                        'Move ${_blockLabel(id)} up',
+                                                    icon: Icons
+                                                        .keyboard_arrow_up_rounded,
+                                                    onPressed: index == 0
+                                                        ? null
+                                                        : () => _moveBlock(
+                                                            index,
+                                                            -1,
+                                                          ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  _MoveChip(
+                                                    label:
+                                                        'Move ${_blockLabel(id)} down',
+                                                    icon: Icons
+                                                        .keyboard_arrow_down_rounded,
+                                                    onPressed:
+                                                        index >=
+                                                            blocks.length - 1
+                                                        ? null
+                                                        : () => _moveBlock(
+                                                            index,
+                                                            1,
+                                                          ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  _HideChip(
+                                                    label:
+                                                        'Hide ${_blockLabel(id)}',
+                                                    onPressed: canHide
+                                                        ? () => _hideBlock(id)
+                                                        : null,
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  // Immediate grab — arrows also move without dragging.
+                                                  ReorderableDragStartListener(
+                                                    index: index,
+                                                    child: const Padding(
+                                                      padding: EdgeInsets.only(
+                                                        top: 18,
+                                                        right: 10,
+                                                      ),
+                                                      child: Icon(
+                                                        Icons
+                                                            .drag_handle_rounded,
+                                                        size: 28,
+                                                        color: FarlyColors.mist,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Expanded(child: body),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  const SliverToBoxAdapter(
+                                    child: SizedBox(height: 24),
+                                  ),
+                                ],
                               )
                             : BottomAligned(
                                 padding: const EdgeInsets.fromLTRB(
@@ -771,6 +1065,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                       expand: true,
                                       onPressed: _remote.retry,
                                     ),
+                                    if (_remote.canPairAgain) ...[
+                                      const SizedBox(height: 10),
+                                      FarlyPress(
+                                        label: 'Pair again',
+                                        icon: Icons.link_rounded,
+                                        expand: true,
+                                        onPressed: _remote.pairAgain,
+                                      ),
+                                    ],
                                   ],
                                 ],
                               ),
@@ -847,6 +1150,7 @@ class _ChromeRow extends StatelessWidget {
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
+                      // Immediate drag — no long-press friction.
                       ReorderableDragStartListener(
                         index: index,
                         child: RoundKey(
@@ -1040,8 +1344,8 @@ class _PairPanelState extends State<_PairPanel> {
   }
 }
 
-class _PhasePill extends StatelessWidget {
-  const _PhasePill({required this.phase});
+class _PhaseDot extends StatelessWidget {
+  const _PhaseDot({required this.phase});
 
   final SessionPhase phase;
 
@@ -1055,7 +1359,24 @@ class _PhasePill extends StatelessWidget {
       SessionPhase.limited => ('Limited', FarlyColors.mist),
       SessionPhase.failed => ('Offline', FarlyColors.clay),
     };
-    return FarlyPill(label: label, color: color, dot: true);
+    return Semantics(
+      label: label,
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.45),
+              blurRadius: 6,
+              spreadRadius: 0.5,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1082,6 +1403,82 @@ class _StatusBanner extends StatelessWidget {
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: FarlyColors.bone,
           height: 1.35,
+        ),
+      ),
+    );
+  }
+}
+
+class _MoveChip extends StatelessWidget {
+  const _MoveChip({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Pressable(
+      label: label,
+      onPressed: onPressed,
+      dimWhenDisabled: true,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled
+              ? const Color(0x22FFFFFF)
+              : const Color(0x10FFFFFF),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: FarlyColors.edge),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? FarlyColors.bone : FarlyColors.mist,
+        ),
+      ),
+    );
+  }
+}
+
+class _HideChip extends StatelessWidget {
+  const _HideChip({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Pressable(
+      label: label,
+      onPressed: onPressed,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: enabled
+              ? FarlyColors.clay.withValues(alpha: 0.22)
+              : const Color(0x10FFFFFF),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: enabled
+                ? FarlyColors.clay.withValues(alpha: 0.45)
+                : FarlyColors.edge,
+          ),
+        ),
+        child: Icon(
+          Icons.visibility_off_rounded,
+          size: 16,
+          color: enabled ? FarlyColors.clay : FarlyColors.mist,
         ),
       ),
     );

@@ -1,4 +1,4 @@
-/// Major blocks on the remote pad that the user can reorder.
+/// Major blocks on the remote pad that the user can reorder or hide.
 enum RemoteBlockId {
   powerRow,
   shortcuts,
@@ -12,9 +12,13 @@ enum RemoteBlockId {
 enum ChromeId { back, home, menu, keyboard, input }
 
 /// Saved arrangement of the remote pad.
+///
+/// [blocks] and [chrome] are the visible items in order. Hidden items are
+/// simply omitted — same pattern for both lists.
 class RemoteLayout {
   const RemoteLayout({required this.blocks, required this.chrome});
 
+  /// Visible major blocks, in order. Hidden ones are omitted.
   final List<RemoteBlockId> blocks;
 
   /// Visible chrome buttons, in order. Hidden ones are simply omitted.
@@ -81,9 +85,8 @@ class RemoteLayout {
         }
       }
     }
-    for (final value in RemoteBlockId.values) {
-      if (!blocks.contains(value)) blocks.add(value);
-    }
+    // Empty / missing list → defaults. A partial list means intentional hides.
+    if (blocks.isEmpty) blocks.addAll(RemoteLayout.defaults.blocks);
 
     final chrome = <ChromeId>[];
     if (rawChrome is List) {

@@ -21,17 +21,21 @@ class DeviceGlyph extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: ready
-          ? FarlySurfaces.sunDisc(glow: 0.22)
-          : FarlySurfaces.glassDisc,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: FarlyColors.raised.withValues(alpha: ready ? 0.95 : 0.7),
+        border: Border.all(color: FarlyColors.edge),
+        boxShadow: FarlySurfaces.shadow,
+      ),
       alignment: Alignment.center,
       child: _face(chosen, ready),
     );
   }
 
   Widget _face(DeviceIcon? chosen, bool ready) {
+    final ink = ready ? FarlyColors.bone : FarlyColors.mist;
     if (chosen?.emoji != null) {
-      return Text(chosen!.emoji!, style: TextStyle(fontSize: size * 0.42));
+      return Text(chosen!.emoji!, style: TextStyle(fontSize: size * 0.52));
     }
     if (chosen?.brand != null) {
       final short = chosen!.brand!.length <= 3
@@ -40,8 +44,8 @@ class DeviceGlyph extends StatelessWidget {
       return Text(
         short,
         style: TextStyle(
-          color: ready ? FarlyColors.night : FarlyColors.mist,
-          fontSize: short.length > 2 ? size * 0.22 : size * 0.34,
+          color: ink,
+          fontSize: short.length > 2 ? size * 0.28 : size * 0.42,
           fontWeight: FontWeight.w800,
           letterSpacing: short.length > 2 ? 0.4 : 0,
           height: 1,
@@ -53,10 +57,6 @@ class DeviceGlyph extends StatelessWidget {
       (_, DeviceBrand.preview) => Icons.touch_app_rounded,
       _ => Icons.tv_rounded,
     };
-    return Icon(
-      icon,
-      size: size * 0.46,
-      color: ready ? FarlyColors.night : FarlyColors.mist,
-    );
+    return Icon(icon, size: size * 0.56, color: ink);
   }
 }

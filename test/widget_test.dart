@@ -153,11 +153,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(session.codes, ['A1B2C3']);
     expect(find.text('Pair with the TV'), findsNothing);
-    expect(find.text('Connected'), findsWidgets);
+    expect(find.text('Connected'), findsNothing);
+    expect(find.bySemanticsLabel('Connected'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey(RemoteAction.volumeUp)));
     await tester.pumpAndSettle();
-    expect(session.sent, [RemoteAction.volumeUp]);
+    expect(
+      session.sent,
+      List.filled(2, RemoteAction.volumeUp),
+    );
   });
 
   testWidgets('a connected remote reopens on the next launch', (tester) async {
@@ -184,12 +188,19 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or delete it. Saved devices from other Wi‑Fi live in the sidebar.'), findsOneWidget);
+    expect(
+      find.text(
+        'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('All saved devices'), findsWidgets);
     expect(await store.readLastConnected(), isNull);
 
     await tester.tap(find.text('TCL C6K'));
     await tester.pumpAndSettle();
-    expect(find.text('Connected'), findsWidgets);
+    expect(find.text('Connected'), findsNothing);
+    expect(find.bySemanticsLabel('Connected'), findsOneWidget);
     expect(await store.readLastConnected(), tv.id);
 
     await tester.pumpWidget(const SizedBox());
@@ -203,13 +214,67 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Connected'), findsWidgets);
+    expect(find.text('Connected'), findsNothing);
+    expect(find.bySemanticsLabel('Connected'), findsOneWidget);
     expect(find.text('Back to devices'), findsNothing);
     expect(find.bySemanticsLabel('Back to devices'), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel('Back to devices'));
     await tester.pumpAndSettle();
-    expect(find.text('Tap the pencil or hold a device to rename it, change its icon, or delete it. Saved devices from other Wi‑Fi live in the sidebar.'), findsOneWidget);
+    expect(
+      find.text(
+        'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('sidebar lists every saved device across Wi‑Fi', (tester) async {
+    await tester.pumpWidget(
+      FarlyApp(
+        readNetwork: () async => const NetworkFingerprint(
+          key: 'ssid:Cafe',
+          label: 'Cafe',
+          ssidKey: 'ssid:Cafe',
+          subnetKey: 'subnet:10.0.0',
+        ),
+        store: MemoryDeviceStore([
+          const FarlyDevice(
+            id: 'roku@192.168.1.20',
+            name: 'Home TV',
+            kind: DeviceKind.screen,
+            brand: DeviceBrand.roku,
+            host: '192.168.1.20',
+            networkKeys: ['ssid:Home', 'subnet:192.168.1'],
+          ),
+          const FarlyDevice(
+            id: 'androidTv@10.0.0.8',
+            name: 'Cafe TV',
+            kind: DeviceKind.screen,
+            brand: DeviceBrand.androidTv,
+            host: '10.0.0.8',
+            networkKeys: ['ssid:Cafe', 'subnet:10.0.0'],
+          ),
+        ]),
+        scanDevices: () async => const [],
+        sessions: (device, onCredentials) => _ReadySession(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cafe TV'), findsOneWidget);
+    expect(find.text('Home TV'), findsNothing);
+    expect(find.bySemanticsLabel('All saved devices'), findsWidgets);
+
+    await tester.tap(find.bySemanticsLabel('All saved devices').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('All saved devices'), findsWidgets);
+    expect(find.text('On this Wi‑Fi'), findsOneWidget);
+    expect(find.text('Other Wi‑Fi'), findsOneWidget);
+    expect(find.text('Cafe TV'), findsWidgets);
+    expect(find.text('Home TV'), findsOneWidget);
+    expect(find.text('Saved on Home'), findsOneWidget);
   });
 
   testWidgets('pencil opens rename sheet and saves the name', (tester) async {
@@ -353,6 +418,23 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Hidden — tap to show'), findsOneWidget);
 
+    expect(find.bySemanticsLabel('Hide Play controls'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Hide Play controls'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    final afterHide = await layout.read();
+    expect(
+      afterHide.blocks,
+      isNot(contains(RemoteBlockId.transport)),
+      reason: 'blocks=${afterHide.blocks}',
+    );
+    expect(find.bySemanticsLabel('Show Play controls'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('Move Apps down'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect((await layout.read()).blocks.indexOf(RemoteBlockId.shortcuts), 2);
+
     await tester.tap(find.text('Netflix'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -376,6 +458,56 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Arrange mode'), findsNothing);
     expect(find.text('Roku'), findsOneWidget);
+  });
+
+  testWidgets('arrange icon opens edit when pad is hidden', (tester) async {
+    tester.view
+      ..physicalSize = const Size(1170, 2532)
+      ..devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    final layout = MemoryLayoutStore(
+      const RemoteLayout(
+        blocks: [RemoteBlockId.powerRow, RemoteBlockId.chrome],
+        chrome: [ChromeId.home, ChromeId.back],
+      ),
+    );
+    await tester.pumpWidget(
+      FarlyApp(
+        readNetwork: _testNetwork,
+        store: MemoryDeviceStore([
+          const FarlyDevice(
+            id: 'roku@192.168.1.20',
+            name: 'Living room',
+            kind: DeviceKind.screen,
+            brand: DeviceBrand.roku,
+            host: '192.168.1.20',
+            port: 8060,
+          ),
+        ]),
+        scanDevices: () async => const [],
+        sessions: (device, onCredentials) => _ReadySession(),
+        shortcuts: MemoryShortcutStore(),
+        layout: layout,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Living room'));
+    await tester.pumpAndSettle();
+
+    expect(await layout.read(), isA<RemoteLayout>().having(
+      (value) => value.blocks,
+      'blocks',
+      isNot(contains(RemoteBlockId.pad)),
+    ));
+    expect(find.text('Arrange mode'), findsNothing);
+    expect(find.bySemanticsLabel('Arrange remote'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('Arrange remote'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Arrange mode'), findsOneWidget);
+    expect(find.text('Hidden — tap to show'), findsWidgets);
+    expect(find.bySemanticsLabel('Show D-pad'), findsOneWidget);
   });
 }
 

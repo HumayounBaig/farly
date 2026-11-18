@@ -39,9 +39,10 @@
 		<string>_androidtvremote2._tcp</string>
 		<string>_airplay._tcp</string>
 		<string>_raop._tcp</string>
+		<string>_farlysync._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Farly looks on your Wi-Fi for TVs and air conditioners so you can control them.</string>
+	<string>Farly looks on your Wi-Fi for TVs and air conditioners, and can share saved remotes with the Mac companion.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Farly uses your location only to read the Wi-Fi name so home TVs stay hidden on other networks.</string>
 	<key>NSLocationUsageDescription</key>

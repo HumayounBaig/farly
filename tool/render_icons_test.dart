@@ -16,6 +16,7 @@ Future<void> _render(
   bool rounded = false,
   double inset = 0,
   bool alpha = true,
+  bool template = false,
 }) async {
   final recorder = ui.PictureRecorder();
   FarlyMarkPainter(
@@ -23,6 +24,7 @@ Future<void> _render(
     glyph: glyph,
     rounded: rounded,
     inset: inset,
+    template: template,
   ).paint(Canvas(recorder), Size.square(pixels.toDouble()));
   final image = await recorder.endRecording().toImage(pixels, pixels);
   final raw = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -106,6 +108,40 @@ void main() {
       await _render('web/icons/Icon-maskable-192.png', 192, inset: 0.1);
       await _render('web/icons/Icon-maskable-512.png', 512, inset: 0.1);
       await _render('docs/farly-icon.png', 1024, rounded: true);
+
+      const mac = 'macos/Runner/Assets.xcassets/AppIcon.appiconset';
+      for (final pixels in [16, 32, 64, 128, 256, 512, 1024]) {
+        await _render('$mac/app_icon_$pixels.png', pixels, rounded: true);
+      }
+
+      const menuBar = 'macos/Runner/Assets.xcassets/MenuBarIcon.imageset';
+      await _render('$menuBar/menubar_18.png', 18, rounded: true);
+      await _render('$menuBar/menubar_36.png', 36, rounded: true);
+      await _render('$menuBar/menubar_54.png', 54, rounded: true);
+
+      const menuBarMono =
+          'macos/Runner/Assets.xcassets/MenuBarIconMono.imageset';
+      await _render(
+        '$menuBarMono/menubar_mono_18.png',
+        18,
+        background: false,
+        template: true,
+        inset: 0.08,
+      );
+      await _render(
+        '$menuBarMono/menubar_mono_36.png',
+        36,
+        background: false,
+        template: true,
+        inset: 0.08,
+      );
+      await _render(
+        '$menuBarMono/menubar_mono_54.png',
+        54,
+        background: false,
+        template: true,
+        inset: 0.08,
+      );
     });
   });
 }

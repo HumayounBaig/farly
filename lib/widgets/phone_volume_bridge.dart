@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:volume_button_listener/volume_button_listener.dart';
 
@@ -96,7 +95,7 @@ class PhoneVolumeBridge with WidgetsBindingObserver {
   }
 
   void _emit(VolumeButtonDirection direction) {
-    HapticFeedback.selectionClick();
+    // No haptic — the phone rocker already has its own system feel.
     onAction(switch (direction) {
       VolumeButtonDirection.up => RemoteAction.volumeUp,
       VolumeButtonDirection.down => RemoteAction.volumeDown,

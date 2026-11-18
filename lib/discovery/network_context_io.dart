@@ -73,10 +73,13 @@ Future<NetworkFingerprint?> readNetworkFingerprint() async {
 
 Future<String?> _wifiName() async {
   try {
-    final status = await Permission.locationWhenInUse.status;
-    if (!status.isGranted) {
-      final asked = await Permission.locationWhenInUse.request();
-      if (!asked.isGranted) return null;
+    // permission_handler has no macOS implementation; SSID may still work.
+    if (Platform.isAndroid || Platform.isIOS) {
+      final status = await Permission.locationWhenInUse.status;
+      if (!status.isGranted) {
+        final asked = await Permission.locationWhenInUse.request();
+        if (!asked.isGranted) return null;
+      }
     }
     final raw = await NetworkInfo().getWifiName();
     if (raw == null) return null;

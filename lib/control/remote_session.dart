@@ -87,6 +87,12 @@ abstract class RemoteSession {
   bool get canRetry => false;
 
   Future<void> retry() async {}
+
+  /// Whether the user can wipe saved pairing and ask the TV for a new code.
+  bool get canPairAgain => false;
+
+  /// Clears saved credentials and starts a fresh pairing handshake.
+  Future<void> pairAgain() async {}
 }
 
 /// A session that explains itself instead of pretending to control a device.

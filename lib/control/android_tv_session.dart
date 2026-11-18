@@ -69,18 +69,7 @@ class AndroidTvSession extends RemoteSession {
 
   @override
   Future<void> open() async {
-    await _pairing?.close();
-    await _remote?.close();
-    _pairing = null;
-    _remote = null;
-    _imeCounter = 0;
-    _imeFieldCounter = 0;
-    _hasImeCounter = false;
-    _hasImeFieldCounter = false;
-    _textFieldFocused = false;
-    _textValue = '';
-    _editEcho = null;
-    _editEchoFromFieldStatus = false;
+    await _resetLinks();
 
     final host = device.host;
     if (host == null) {
@@ -94,11 +83,13 @@ class AndroidTvSession extends RemoteSession {
     if (cert != null && key != null && cert.isNotEmpty && key.isNotEmpty) {
       _identity = AtvIdentity(certificatePem: cert, privateKeyPem: key);
       if (await _connectRemote(host)) return;
-      // Saved cert no longer opens the remote. Mint a fresh identity so the
-      // TV can show a new pairing code instead of staying silent.
-      _identity = null;
-      device = device.copyWith(clearToken: true, clearClientKey: true);
-      onCredentials?.call(device);
+      // Keep the saved cert. A sleepy TV, wrong band, or brief timeout must
+      // not mint a new identity and force another pairing code.
+      _say(
+        SessionPhase.failed,
+        'Could not reconnect. Tap Try again, or Pair again if the TV forgot Farly.',
+      );
+      return;
     }
     await _startPairing(host);
   }
@@ -108,6 +99,39 @@ class AndroidTvSession extends RemoteSession {
 
   @override
   Future<void> retry() => open();
+
+  @override
+  bool get canPairAgain => true;
+
+  @override
+  Future<void> pairAgain() async {
+    await _resetLinks();
+    _identity = null;
+    device = device.copyWith(clearToken: true, clearClientKey: true);
+    onCredentials?.call(device);
+    final host = device.host;
+    if (host == null) {
+      _say(SessionPhase.failed, 'This TV has no address.');
+      return;
+    }
+    _say(SessionPhase.connecting, 'Asking the TV for a new code');
+    await _startPairing(host);
+  }
+
+  Future<void> _resetLinks() async {
+    await _pairing?.close();
+    await _remote?.close();
+    _pairing = null;
+    _remote = null;
+    _imeCounter = 0;
+    _imeFieldCounter = 0;
+    _hasImeCounter = false;
+    _hasImeFieldCounter = false;
+    _textFieldFocused = false;
+    _textValue = '';
+    _editEcho = null;
+    _editEchoFromFieldStatus = false;
+  }
 
   Future<bool> _connectRemote(String host) async {
     final identity = _identity;

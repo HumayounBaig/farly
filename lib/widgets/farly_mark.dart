@@ -26,6 +26,7 @@ class FarlyMarkPainter extends CustomPainter {
     this.glyph = true,
     this.rounded = true,
     this.inset = 0,
+    this.template = false,
   });
 
   final bool background;
@@ -34,6 +35,9 @@ class FarlyMarkPainter extends CustomPainter {
 
   /// Fraction of the side kept empty around the glyph.
   final double inset;
+
+  /// Black-on-clear glyph for macOS menu-bar template images.
+  final bool template;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -79,6 +83,7 @@ class FarlyMarkPainter extends CustomPainter {
     const horizonY = 0.58;
     final sunCenter = at(0.5, horizonY);
     final sunRadius = unit * 0.16;
+    final ink = template ? const Color(0xFF000000) : null;
 
     canvas.save();
     canvas.clipRect(
@@ -93,11 +98,16 @@ class FarlyMarkPainter extends CustomPainter {
       sunCenter,
       sunRadius,
       Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [FarlyColors.sunrise, FarlyColors.ember],
-        ).createShader(Rect.fromCircle(center: sunCenter, radius: sunRadius)),
+        ..color = ink ?? FarlyColors.sunrise
+        ..shader = ink != null
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [FarlyColors.sunrise, FarlyColors.ember],
+              ).createShader(
+                Rect.fromCircle(center: sunCenter, radius: sunRadius),
+              ),
     );
     canvas.restore();
 
@@ -111,7 +121,7 @@ class FarlyMarkPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = unit * 0.045
           ..strokeCap = StrokeCap.round
-          ..color = FarlyColors.bone.withValues(alpha: alpha),
+          ..color = (ink ?? FarlyColors.bone).withValues(alpha: alpha),
       );
     }
 
@@ -121,7 +131,7 @@ class FarlyMarkPainter extends CustomPainter {
     canvas.drawLine(
       at(0.17, horizonY),
       at(0.83, horizonY),
-      line..color = FarlyColors.bone,
+      line..color = ink ?? FarlyColors.bone,
     );
     for (final (y, half, alpha) in [
       (0.67, 0.13, 0.75),
@@ -131,7 +141,8 @@ class FarlyMarkPainter extends CustomPainter {
       canvas.drawLine(
         at(0.5 - half, y),
         at(0.5 + half, y),
-        line..color = FarlyColors.horizon.withValues(alpha: alpha),
+        line
+          ..color = (ink ?? FarlyColors.horizon).withValues(alpha: alpha),
       );
     }
   }
@@ -141,6 +152,7 @@ class FarlyMarkPainter extends CustomPainter {
     return oldDelegate.background != background ||
         oldDelegate.glyph != glyph ||
         oldDelegate.rounded != rounded ||
-        oldDelegate.inset != inset;
+        oldDelegate.inset != inset ||
+        oldDelegate.template != template;
   }
 }

@@ -19,6 +19,7 @@ import '../widgets/farly_press.dart';
 import '../widgets/keys.dart';
 import '../widgets/scan_orb.dart';
 import '../widgets/edit_device_sheet.dart';
+import '../widgets/share_devices_sheet.dart';
 import '../widgets/tv_maker_badge.dart';
 import 'open_device.dart';
 
@@ -110,6 +111,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           Navigator.pop(context);
           await _forget(context, device);
         },
+        onShareWithMac: () {
+          Navigator.pop(context);
+          unawaited(showShareDevicesSheet(context, room));
+        },
       ),
       body: FarlyBackdrop(
         child: SafeArea(
@@ -125,6 +130,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       _Header(
                         count: onNetwork.length,
                         networkLabel: room.network?.label,
+                        savedCount: room.devices.length,
                         elsewhereCount: room.devicesElsewhere.length,
                         onOpenSaved: () =>
                             _scaffoldKey.currentState?.openDrawer(),
@@ -144,6 +150,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                     )
                             else
                               ..._deviceSection(context, onNetwork),
+                            if (room.devices.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              _AllSavedButton(
+                                total: room.devices.length,
+                                elsewhere: room.devicesElsewhere.length,
+                                onPressed: () => _scaffoldKey.currentState
+                                    ?.openDrawer(),
+                              ),
+                            ],
                             if (room.notice != null) ...[
                               const SizedBox(height: 14),
                               _Notice(text: room.notice!),
@@ -208,7 +223,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       Padding(
         padding: const EdgeInsets.only(left: 4, top: 2),
         child: Text(
-          'Tap the pencil or hold a device to rename it, change its icon, or delete it. Saved devices from other Wi‑Fi live in the sidebar.',
+          'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
@@ -274,26 +289,29 @@ class _Header extends StatelessWidget {
     required this.count,
     required this.onOpenSaved,
     this.networkLabel,
+    this.savedCount = 0,
     this.elsewhereCount = 0,
   });
 
   final int count;
   final String? networkLabel;
+  final int savedCount;
   final int elsewhereCount;
   final VoidCallback onOpenSaved;
 
   @override
   Widget build(BuildContext context) {
+    final badgeCount = elsewhereCount > 0 ? elsewhereCount : savedCount;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 20, 4),
       child: Row(
         children: [
           IconButton(
-            tooltip: 'Saved devices',
+            tooltip: 'All saved devices',
             onPressed: onOpenSaved,
             icon: Badge(
-              isLabelVisible: elsewhereCount > 0,
-              label: Text('$elsewhereCount'),
+              isLabelVisible: savedCount > 0,
+              label: Text('$badgeCount'),
               child: const Icon(Icons.menu_rounded),
             ),
           ),
@@ -326,6 +344,56 @@ class _Header extends StatelessWidget {
   }
 }
 
+class _AllSavedButton extends StatelessWidget {
+  const _AllSavedButton({
+    required this.total,
+    required this.elsewhere,
+    required this.onPressed,
+  });
+
+  final int total;
+  final int elsewhere;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = elsewhere == 0
+        ? (total == 1 ? '1 saved device' : '$total saved devices')
+        : elsewhere == 1
+        ? '$total saved · 1 on another Wi‑Fi'
+        : '$total saved · $elsewhere on other Wi‑Fi';
+    return Pressable(
+      label: 'All saved devices',
+      onPressed: onPressed,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: FarlySurfaces.glass(radius: 20),
+        child: Row(
+          children: [
+            const Icon(Icons.folder_open_rounded, color: FarlyColors.horizon),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'All saved devices',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(detail, style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _EmptyOnNetwork extends StatelessWidget {
   const _EmptyOnNetwork({
     required this.savedCount,
@@ -353,8 +421,8 @@ class _EmptyOnNetwork extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         FarlyPress(
-          label: 'Saved devices',
-          icon: Icons.menu_rounded,
+          label: 'All saved devices',
+          icon: Icons.folder_open_rounded,
           onPressed: onOpenSaved,
         ),
       ],
@@ -368,12 +436,14 @@ class _SavedDevicesDrawer extends StatelessWidget {
     required this.onOpen,
     required this.onEdit,
     required this.onForget,
+    required this.onShareWithMac,
   });
 
   final RoomModel room;
   final ValueChanged<FarlyDevice> onOpen;
   final ValueChanged<FarlyDevice> onEdit;
   final ValueChanged<FarlyDevice> onForget;
+  final VoidCallback onShareWithMac;
 
   @override
   Widget build(BuildContext context) {
@@ -385,30 +455,36 @@ class _SavedDevicesDrawer extends StatelessWidget {
           builder: (context, _) {
             final here = room.devicesOnNetwork;
             final elsewhere = room.devicesElsewhere;
+            final total = room.devices.length;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
                   child: Text(
-                    'Saved devices',
+                    'All saved devices',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
-                if (room.network?.label != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                    child: Text(
-                      'This Wi‑Fi · ${room.network!.label}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                  child: Text(
+                    total == 0
+                        ? 'Nothing saved yet'
+                        : room.network?.label == null
+                        ? (total == 1 ? '1 device' : '$total devices')
+                        : (total == 1
+                              ? '1 device · ${room.network!.label}'
+                              : '$total devices · ${room.network!.label}'),
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
+                ),
                 Expanded(
-                  child: room.devices.isEmpty
+                  child: total == 0
                       ? Padding(
                           padding: const EdgeInsets.all(20),
                           child: Text(
-                            'Scan or add a TV to keep it here.',
+                            'Scan or add a TV to keep it here across Wi‑Fi networks.',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         )
@@ -427,7 +503,7 @@ class _SavedDevicesDrawer extends StatelessWidget {
                                 ),
                             ],
                             if (elsewhere.isNotEmpty) ...[
-                              _DrawerSectionLabel('Other networks'),
+                              _DrawerSectionLabel('Other Wi‑Fi'),
                               for (final device in elsewhere)
                                 _DrawerDeviceTile(
                                   device: device,
@@ -440,6 +516,18 @@ class _SavedDevicesDrawer extends StatelessWidget {
                           ],
                         ),
                 ),
+                if (!kIsWeb &&
+                    (defaultTargetPlatform == TargetPlatform.iOS ||
+                        defaultTargetPlatform == TargetPlatform.android))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: FarlyPress(
+                      label: 'Share with Mac',
+                      icon: Icons.laptop_mac_rounded,
+                      expand: true,
+                      onPressed: total == 0 ? null : onShareWithMac,
+                    ),
+                  ),
               ],
             );
           },
@@ -461,6 +549,15 @@ class _DrawerSectionLabel extends StatelessWidget {
       child: Text(text, style: Theme.of(context).textTheme.labelMedium),
     );
   }
+}
+
+String _elsewhereSubtitle(FarlyDevice device) {
+  for (final key in device.networkKeys) {
+    if (key.startsWith('ssid:') && key.length > 5) {
+      return 'Saved on ${key.substring(5)}';
+    }
+  }
+  return 'Not on this Wi‑Fi';
 }
 
 class _DrawerDeviceTile extends StatelessWidget {
@@ -495,7 +592,9 @@ class _DrawerDeviceTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
-            onNetwork ? device.brand.label : 'Not on this Wi‑Fi',
+            onNetwork
+                ? device.brand.label
+                : _elsewhereSubtitle(device),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

@@ -221,6 +221,22 @@ class RemoteController extends ChangeNotifier {
     await _openAcrossHosts(allowRelocate: true);
   }
 
+  bool get canPairAgain => session.canPairAgain;
+
+  /// Wipes the saved pairing and asks the TV for a fresh code.
+  Future<void> pairAgain() async {
+    if (!session.canPairAgain || _opening) return;
+    _recoveryUsed = false;
+    _opening = true;
+    try {
+      _device = _device.copyWith(clearToken: true, clearClientKey: true);
+      session.rebind(_device);
+      await session.pairAgain();
+    } finally {
+      _opening = false;
+    }
+  }
+
   Future<void> launch(AppShortcut shortcut) async {
     if (phase != SessionPhase.ready && phase != SessionPhase.limited) {
       detail = phase == SessionPhase.pairing

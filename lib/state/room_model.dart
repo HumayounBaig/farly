@@ -4,6 +4,7 @@ import '../discovery/network_context.dart';
 import '../discovery/room_scan.dart';
 import '../models/farly_device.dart';
 import '../storage/device_store.dart';
+import '../sync/device_sync.dart';
 import 'device_merge.dart';
 
 typedef NetworkReader = Future<NetworkFingerprint?> Function();
@@ -140,7 +141,7 @@ class RoomModel extends ChangeNotifier {
     try {
       if (!roomScanSupported) {
         notice =
-            'Scanning runs in the iOS and Android app. The browser cannot see your Wi-Fi.';
+            'Scanning runs in the Farly app on iOS, Android, or Mac. The browser cannot see your Wi-Fi.';
         return;
       }
       await refreshNetwork();
@@ -179,6 +180,58 @@ class RoomModel extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  /// Snapshot for LAN share with the Mac companion.
+  DeviceSyncPayload exportSyncPayload({String source = 'farly'}) {
+    return DeviceSyncPayload(
+      devices: devices,
+      lastConnectedId: lastConnectedId,
+      lastConnectedByNetwork: lastConnectedByNetwork,
+      exportedAt: DateTime.now(),
+      source: source,
+    );
+  }
+
+  /// Merges a phone (or Mac) dump into the local saved list.
+  Future<SyncImportResult> importSyncPayload(DeviceSyncPayload payload) async {
+    final before = {for (final device in devices) device.id};
+    final merged = mergeImportedDevices(
+      local: devices,
+      imported: payload.devices,
+    );
+    devices = merged;
+    await store.write(devices);
+
+    lastConnectedByNetwork = mergeLastConnectedByNetwork(
+      local: lastConnectedByNetwork,
+      imported: payload.lastConnectedByNetwork,
+    );
+    await store.writeLastConnectedByNetwork(lastConnectedByNetwork);
+
+    final importedLast = payload.lastConnectedId;
+    if (importedLast != null && _deviceForId(importedLast) != null) {
+      lastConnectedId = importedLast;
+      await store.writeLastConnected(importedLast);
+      _autoOpen = _remoteForCurrentNetwork();
+    }
+
+    var added = 0;
+    var updated = 0;
+    for (final device in merged) {
+      if (before.contains(device.id)) {
+        if (payload.devices.any((item) => sameDevice(item, device))) {
+          updated++;
+        }
+      } else if (payload.devices.any((item) => sameDevice(item, device))) {
+        added++;
+      }
+    }
+    notice = added + updated == 0
+        ? 'Nothing new to import.'
+        : 'Imported $added new, updated $updated.';
+    notifyListeners();
+    return SyncImportResult(added: added, updated: updated);
   }
 
   Future<void> updateDevice(FarlyDevice device) async {

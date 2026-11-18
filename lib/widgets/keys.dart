@@ -41,31 +41,34 @@ class _PressableState extends State<Pressable> {
       enabled: enabled,
       label: widget.label,
       excludeSemantics: widget.label != null,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: enabled ? (_) => _setDown(true) : null,
-        onTapUp: enabled ? (_) => _setDown(false) : null,
-        onTapCancel: enabled ? () => _setDown(false) : null,
-        onTap: enabled
-            ? () {
-                HapticFeedback.selectionClick();
-                widget.onPressed!();
-              }
-            : null,
-        onLongPress: widget.onLongPress == null
-            ? null
-            : () {
-                HapticFeedback.mediumImpact();
-                widget.onLongPress!();
-              },
-        child: AnimatedScale(
-          scale: _down ? 0.94 : 1,
-          duration: const Duration(milliseconds: 110),
-          curve: Curves.easeOut,
-          child: AnimatedOpacity(
-            opacity: enabled || !widget.dimWhenDisabled ? 1 : 0.5,
-            duration: const Duration(milliseconds: 150),
-            child: widget.child,
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: enabled ? (_) => _setDown(true) : null,
+          onTapUp: enabled ? (_) => _setDown(false) : null,
+          onTapCancel: enabled ? () => _setDown(false) : null,
+          onTap: enabled
+              ? () {
+                  HapticFeedback.selectionClick();
+                  widget.onPressed!();
+                }
+              : null,
+          onLongPress: widget.onLongPress == null
+              ? null
+              : () {
+                  HapticFeedback.mediumImpact();
+                  widget.onLongPress!();
+                },
+          child: AnimatedScale(
+            scale: _down ? 0.94 : 1,
+            duration: const Duration(milliseconds: 110),
+            curve: Curves.easeOut,
+            child: AnimatedOpacity(
+              opacity: enabled || !widget.dimWhenDisabled ? 1 : 0.5,
+              duration: const Duration(milliseconds: 150),
+              child: widget.child,
+            ),
           ),
         ),
       ),
@@ -199,6 +202,8 @@ class LevelRail extends StatefulWidget {
     this.iconKey,
     this.width = 48,
     this.height = 156,
+    /// How many TV volume/brightness ticks one rail step sends.
+    this.steps = 1,
   });
 
   final IconData icon;
@@ -211,6 +216,7 @@ class LevelRail extends StatefulWidget {
   final Key? iconKey;
   final double width;
   final double height;
+  final int steps;
 
   @override
   State<LevelRail> createState() => _LevelRailState();
@@ -227,13 +233,17 @@ class _LevelRailState extends State<LevelRail> {
 
   void _bump(bool up) {
     HapticFeedback.selectionClick();
-    if (up) {
-      widget.onIncrease();
-    } else {
-      widget.onDecrease();
+    final count = widget.steps < 1 ? 1 : widget.steps;
+    for (var i = 0; i < count; i++) {
+      if (up) {
+        widget.onIncrease();
+      } else {
+        widget.onDecrease();
+      }
     }
     setState(() {
-      _level = (_level + (up ? 0.07 : -0.07)).clamp(0.12, 1.0);
+      final delta = 0.07 * count.clamp(1, 10) / (count > 1 ? 2 : 1);
+      _level = (_level + (up ? delta : -delta)).clamp(0.12, 1.0);
     });
   }
 

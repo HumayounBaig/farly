@@ -12,7 +12,8 @@ abstract final class FarlySurfaces {
   static const glassFill = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    colors: [Color(0xF2283B35), Color(0xF2131C19)],
+    // Slightly lifted top stop so pads/keys read as raised against the field.
+    colors: [Color(0xF22E443C), Color(0xF2131C19)],
   );
 
   static const shadow = [

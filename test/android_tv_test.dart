@@ -294,6 +294,76 @@ void main() {
     expect((await session.send(RemoteAction.up)).ok, isFalse);
     await session.close();
   });
+
+  test('a soft reconnect failure keeps pairing and does not ask for a code', () async {
+    final closed = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final port = closed.port;
+    await closed.close();
+
+    FarlyDevice? stored;
+    final paired = FarlyDevice(
+      id: 'androidTv@127.0.0.1',
+      name: 'TCL',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.androidTv,
+      host: '127.0.0.1',
+      token: _client.certificatePem,
+      clientKey: _client.privateKeyPem,
+    );
+    final session = AndroidTvSession(
+      device: paired,
+      onCredentials: (device) => stored = device,
+      pairingPort: port,
+      remotePort: port,
+      identities: () async => throw StateError('must not mint a new identity'),
+      timeout: const Duration(seconds: 1),
+    );
+    final phases = <SessionPhase>[];
+    session.updates.listen((update) => phases.add(update.phase));
+    await session.open();
+    await pumpEventQueue();
+    expect(phases, isNot(contains(SessionPhase.pairing)));
+    expect(phases.last, SessionPhase.failed);
+    expect(session.device.token, _client.certificatePem);
+    expect(session.device.clientKey, _client.privateKeyPem);
+    expect(stored, isNull);
+    await session.close();
+  });
+
+  test('pair again clears the cert and asks for a new code', () async {
+    final tv = await _FakeTv.start();
+    addTearDown(tv.stop);
+
+    FarlyDevice? stored;
+    final session = AndroidTvSession(
+      device: FarlyDevice(
+        id: 'androidTv@127.0.0.1',
+        name: 'TCL',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.androidTv,
+        host: '127.0.0.1',
+        token: _client.certificatePem,
+        clientKey: _client.privateKeyPem,
+      ),
+      onCredentials: (device) => stored = device,
+      pairingPort: tv.pairingPort,
+      remotePort: tv.remotePort,
+      identities: () async => _client,
+    );
+    final phases = <SessionPhase>[];
+    session.updates.listen((update) => phases.add(update.phase));
+
+    await session.pairAgain();
+    await pumpEventQueue();
+    expect(phases.last, SessionPhase.pairing);
+    expect(stored?.token, isNull);
+    expect(stored?.clientKey, isNull);
+
+    final paired = await session.submitCode(tv.code);
+    expect(paired.ok, isTrue);
+    expect(stored?.token, _client.certificatePem);
+    await session.close();
+  });
 }
 
 /// A loopback stand-in for a Google TV: pairing on one port, keys on another.
