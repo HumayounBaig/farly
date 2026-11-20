@@ -136,21 +136,46 @@ final class StatusBarController {
     panel.setFrameOrigin(origin)
     NSApp.activate(ignoringOtherApps: true)
     panel.makeKeyAndOrderFront(nil)
-
-    eventMonitor = NSEvent.addGlobalMonitorForEvents(
-      matching: [.leftMouseDown, .rightMouseDown]
-    ) { [weak self] event in
-      guard let self else { return }
-      if event.window == self.panel { return }
-      self.hidePanel()
-    }
+    installDismissMonitor()
   }
 
   func hidePanel() {
     panel.orderOut(nil)
+    removeDismissMonitor()
+  }
+
+  private func installDismissMonitor() {
+    removeDismissMonitor()
+    eventMonitor = NSEvent.addGlobalMonitorForEvents(
+      matching: [.leftMouseDown, .rightMouseDown]
+    ) { [weak self] event in
+      self?.handleOutsideClick(event)
+    }
+  }
+
+  private func removeDismissMonitor() {
     if let eventMonitor {
       NSEvent.removeMonitor(eventMonitor)
       self.eventMonitor = nil
     }
+  }
+
+  private func handleOutsideClick(_ event: NSEvent) {
+    // Let the status-item action own open/close. Global monitors also see
+    // menu-bar icon clicks, which would hide then immediately re-show.
+    if clickIsOnStatusItem() { return }
+    if panel.inLiveResize { return }
+    if event.window == panel { return }
+    if panel.frame.contains(NSEvent.mouseLocation) { return }
+    hidePanel()
+  }
+
+  private func clickIsOnStatusItem() -> Bool {
+    guard let button = statusItem.button, let window = button.window else {
+      return false
+    }
+    let buttonRect = button.convert(button.bounds, to: nil)
+    let screenRect = window.convertToScreen(buttonRect).insetBy(dx: -2, dy: -2)
+    return screenRect.contains(NSEvent.mouseLocation)
   }
 }

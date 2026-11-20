@@ -24,6 +24,9 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
+    // Stay a menu-bar accessory: no Dock icon, don't replace the active app's menus.
+    NSApp.setActivationPolicy(.accessory)
+
     guard
       let controller = mainFlutterWindow?.contentViewController as? FlutterViewController
     else {
