@@ -22,6 +22,7 @@ class FarlySyncServer {
   Timer? _ttl;
   var _advertising = false;
   var _failedAttempts = 0;
+  var _locked = false;
 
   String get pin => _pin;
   int? get port => _server?.port;
@@ -45,6 +46,7 @@ class FarlySyncServer {
     _payload = payload;
     _pin = generateSyncPin();
     _failedAttempts = 0;
+    _locked = false;
     _host = await _wifiIpv4();
 
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
@@ -111,8 +113,16 @@ class FarlySyncServer {
   }
 
   Future<void> _handle(HttpRequest request) async {
+    try {
+      await _respond(request);
+    } catch (_) {
+      // stop() may force-close the connection while a reply is pending.
+    }
+  }
+
+  Future<void> _respond(HttpRequest request) async {
     final payload = _payload;
-    if (payload == null) {
+    if (payload == null || _locked) {
       request.response.statusCode = HttpStatus.serviceUnavailable;
       await request.response.close();
       return;
@@ -126,12 +136,14 @@ class FarlySyncServer {
 
     final offered = request.headers.value(farlySyncPinHeader);
     if (offered == null || !constantTimeEquals(offered, _pin)) {
+      // Count synchronously so parallel guesses can't beat the limit.
+      final lockOut = ++_failedAttempts >= maxSyncPinFailures;
+      if (lockOut) _locked = true;
       await Future<void>.delayed(const Duration(milliseconds: 300));
       request.response.statusCode = HttpStatus.unauthorized;
       request.response.write('bad pin');
       await request.response.close();
-      // Lock out: stopping invalidates the PIN, so a new share is needed.
-      if (++_failedAttempts >= maxSyncPinFailures) unawaited(stop());
+      if (lockOut) unawaited(stop());
       return;
     }
 

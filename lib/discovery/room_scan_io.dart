@@ -96,11 +96,15 @@ Future<void> _ssdp(Map<String, FarlyDevice> byHost) async {
       );
       if (message == null) return;
       final device = classifySsdp(message);
-      // A LOCATION pointing elsewhere could make us fetch an arbitrary URL.
-      if (device != null &&
-          locationMatchesSender(device.host, datagram.address.address)) {
-        putBetterDevice(byHost, device);
-      }
+      if (device == null) return;
+      // A LOCATION IP that isn't the sender is spoofed; hostnames are kept
+      // but never fetched (see _lookupName).
+      final host = device.host;
+      final spoofed =
+          host != null &&
+          InternetAddress.tryParse(host) != null &&
+          !locationMatchesSender(host, datagram.address.address);
+      if (!spoofed) putBetterDevice(byHost, device);
     });
     // UDP is lossy: send the batch twice inside the window.
     await Future<void>.delayed(const Duration(seconds: 1));
@@ -237,12 +241,34 @@ Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
   } else {
     return null;
   }
-  if (uri == null) return null;
+  // Only fetch from an IP literal that the description URL also points at.
+  if (uri == null ||
+      InternetAddress.tryParse(host) == null ||
+      uri.host != host) {
+    return null;
+  }
   try {
-    final response = await client
-        .send(http.Request('GET', uri))
-        .timeout(const Duration(milliseconds: 800));
-    if (response.statusCode < 200 || response.statusCode >= 300) return null;
+    return await _fetchName(
+      client,
+      uri,
+      tags,
+    ).timeout(const Duration(seconds: 2));
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<String?> _fetchName(
+  http.Client client,
+  Uri uri,
+  List<String> tags,
+) async {
+  {
+    final response = await client.send(http.Request('GET', uri));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      await response.stream.listen(null).cancel();
+      return null;
+    }
     final bytes = <int>[];
     await for (final chunk in response.stream) {
       bytes.addAll(chunk);
@@ -253,8 +279,6 @@ Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
       final value = xmlTag(body, tag);
       if (value != null) return value;
     }
-  } catch (_) {
-    return null;
   }
   return null;
 }
