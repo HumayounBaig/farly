@@ -147,24 +147,27 @@ void main() {
     },
   );
 
-  test('parallel wrong PINs lock the share before the correct PIN works', () async {
-    final server = FarlySyncServer();
-    addTearDown(server.stop);
-    await server.start(
-      const DeviceSyncPayload(devices: [living], source: 'test'),
-      ttl: const Duration(seconds: 30),
-    );
-    final url = Uri.parse('http://127.0.0.1:${server.port}$farlySyncPath');
-    final pin = server.pin;
-    await Future.wait([
-      for (var i = 0; i < 50; i++)
-        http.get(url, headers: {farlySyncPinHeader: 'x$i'}).catchError(
-          (_) => http.Response('', 0),
-        ),
-    ]);
-    final late = await http
-        .get(url, headers: {farlySyncPinHeader: pin})
-        .catchError((_) => http.Response('', 0));
-    expect(late.statusCode, isNot(200));
-  });
+  test(
+    'parallel wrong PINs lock the share before the correct PIN works',
+    () async {
+      final server = FarlySyncServer();
+      addTearDown(server.stop);
+      await server.start(
+        const DeviceSyncPayload(devices: [living], source: 'test'),
+        ttl: const Duration(seconds: 30),
+      );
+      final url = Uri.parse('http://127.0.0.1:${server.port}$farlySyncPath');
+      final pin = server.pin;
+      await Future.wait([
+        for (var i = 0; i < 50; i++)
+          http
+              .get(url, headers: {farlySyncPinHeader: 'x$i'})
+              .catchError((_) => http.Response('', 599)),
+      ]);
+      final late = await http
+          .get(url, headers: {farlySyncPinHeader: pin})
+          .catchError((_) => http.Response('', 599));
+      expect(late.statusCode, isNot(200));
+    },
+  );
 }
