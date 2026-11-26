@@ -9,6 +9,12 @@ import 'package:farly/widgets/tv_maker_badge.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('ssdp LOCATION host must match the sender', () {
+    expect(locationMatchesSender('192.168.1.23', '192.168.1.23'), isTrue);
+    expect(locationMatchesSender('10.0.0.5', '192.168.1.23'), isFalse);
+    expect(locationMatchesSender(null, '192.168.1.23'), isFalse);
+  });
+
   test('ssdp parser reads roku headers', () {
     const raw =
         'HTTP/1.1 200 OK\r\n'

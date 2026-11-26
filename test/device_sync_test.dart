@@ -54,10 +54,7 @@ void main() {
       token: 'fresh',
       clientKey: 'key',
     );
-    final merged = mergeImportedDevices(
-      local: [local],
-      imported: [imported],
-    );
+    final merged = mergeImportedDevices(local: [local], imported: [imported]);
     expect(merged, hasLength(1));
     expect(merged.single.name, 'Lounge');
     expect(merged.single.token, 'fresh');
@@ -66,9 +63,7 @@ void main() {
 
   test('RoomModel import writes devices and last-connected map', () async {
     final room = RoomModel(
-      store: MemoryDeviceStore([
-        living.copyWith(token: 'stale'),
-      ]),
+      store: MemoryDeviceStore([living.copyWith(token: 'stale')]),
       scanDevices: () async => const [],
       readNetwork: () async => null,
     );
@@ -88,19 +83,14 @@ void main() {
           ),
         ],
         lastConnectedId: living.id,
-        lastConnectedByNetwork: const {
-          'ssid:Home': 'samsung@192.168.1.40',
-        },
+        lastConnectedByNetwork: const {'ssid:Home': 'samsung@192.168.1.40'},
       ),
     );
 
     expect(result.added, 1);
     expect(result.updated, 1);
     expect(room.devices, hasLength(2));
-    expect(
-      room.devices.firstWhere((d) => d.id == living.id).token,
-      'synced',
-    );
+    expect(room.devices.firstWhere((d) => d.id == living.id).token, 'synced');
     expect(room.lastConnectedId, living.id);
     expect(room.lastConnectedByNetwork['ssid:Home'], living.id);
   });
@@ -131,4 +121,29 @@ void main() {
     );
     expect(payload.devices.single.id, living.id);
   });
+
+  test('constantTimeEquals compares length and content', () {
+    expect(constantTimeEquals('123456', '123456'), isTrue);
+    expect(constantTimeEquals('123456', '123457'), isFalse);
+    expect(constantTimeEquals('12345', '123456'), isFalse);
+  });
+
+  test(
+    'sync server stops after repeated wrong PINs and ignores ?pin=',
+    () async {
+      final server = FarlySyncServer();
+      addTearDown(server.stop);
+      await server.start(
+        const DeviceSyncPayload(devices: [living], source: 'test'),
+        ttl: const Duration(seconds: 30),
+      );
+      final url = 'http://127.0.0.1:${server.port}$farlySyncPath';
+      final query = await http.get(Uri.parse('$url?pin=${server.pin}'));
+      expect(query.statusCode, 401);
+      for (var i = 0; i < maxSyncPinFailures - 1; i++) {
+        await http.get(Uri.parse(url), headers: {farlySyncPinHeader: 'nope'});
+      }
+      expect(server.isRunning, isFalse);
+    },
+  );
 }

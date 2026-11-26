@@ -38,6 +38,10 @@ Uri? parseLocation(String? location) {
   return Uri.tryParse('http://$location');
 }
 
+/// True when the SSDP LOCATION host is the address that sent the response.
+bool locationMatchesSender(String? locationHost, String sender) =>
+    locationHost != null && locationHost == sender;
+
 String? xmlTag(String body, String tag) {
   final match = RegExp(
     '<$tag>([^<]+)</$tag>',

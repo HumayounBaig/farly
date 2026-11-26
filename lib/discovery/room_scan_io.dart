@@ -55,10 +55,7 @@ Future<void> _promoteCastTvs(Map<String, FarlyDevice> byHost) async {
 }
 
 Future<bool> _answersAtvRemote(String host) async {
-  for (final port in [
-    DeviceBrand.androidTv.defaultPort!,
-    6467,
-  ]) {
+  for (final port in [DeviceBrand.androidTv.defaultPort!, 6467]) {
     try {
       final socket = await Socket.connect(
         host,
@@ -99,7 +96,11 @@ Future<void> _ssdp(Map<String, FarlyDevice> byHost) async {
       );
       if (message == null) return;
       final device = classifySsdp(message);
-      if (device != null) putBetterDevice(byHost, device);
+      // A LOCATION pointing elsewhere could make us fetch an arbitrary URL.
+      if (device != null &&
+          locationMatchesSender(device.host, datagram.address.address)) {
+        putBetterDevice(byHost, device);
+      }
     });
     // UDP is lossy: send the batch twice inside the window.
     await Future<void>.delayed(const Duration(seconds: 1));
@@ -220,6 +221,8 @@ Future<void> _enrichNames(Map<String, FarlyDevice> byHost) async {
   }
 }
 
+const _maxDescriptionBytes = 256 * 1024;
+
 Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
   final host = device.host;
   if (host == null) return null;
@@ -237,11 +240,17 @@ Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
   if (uri == null) return null;
   try {
     final response = await client
-        .get(uri)
+        .send(http.Request('GET', uri))
         .timeout(const Duration(milliseconds: 800));
     if (response.statusCode < 200 || response.statusCode >= 300) return null;
+    final bytes = <int>[];
+    await for (final chunk in response.stream) {
+      bytes.addAll(chunk);
+      if (bytes.length > _maxDescriptionBytes) return null;
+    }
+    final body = utf8.decode(bytes, allowMalformed: true);
     for (final tag in tags) {
-      final value = xmlTag(response.body, tag);
+      final value = xmlTag(body, tag);
       if (value != null) return value;
     }
   } catch (_) {
