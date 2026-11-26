@@ -65,3 +65,9 @@ A Paris app-marketing company already uses the Farly name. Check that trademark 
 ## Network notes
 
 iOS and macOS show a local-network prompt. Roku and many TVs answer SSDP, which also needs Apple's multicast entitlement before that search works on a device. mDNS (Chromecast, Android TV, Apple TV) uses the system discovery API and does not need that entitlement. If a TV does not appear, add it by address.
+
+## Website and license
+
+The site (privacy policy, terms of use, support) lives in `docs/` and is served by GitHub Pages.
+
+Farly is released under the [MIT License](LICENSE). The Farly name and logo are not covered by it.
