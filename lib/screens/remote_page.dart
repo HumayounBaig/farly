@@ -84,6 +84,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_retryOnResume());
+    } else if (state == AppLifecycleState.hidden) {
+      // Backing out of the TV menu when the app is minimized.
+      unawaited(_remote.send(RemoteAction.back));
     }
   }
 
@@ -123,7 +126,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_phoneVolume.stop());
     _remote.removeListener(_rememberWhenReady);
-    _remote.dispose();
+    final remote = _remote;
+    // Press TV Back once on leaving the pad; close the session only after it goes out.
+    unawaited(remote
+        .send(RemoteAction.back)
+        .timeout(const Duration(seconds: 2))
+        .catchError((_) {})
+        .whenComplete(remote.dispose));
     super.dispose();
   }
 
