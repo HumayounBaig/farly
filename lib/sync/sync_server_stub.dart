@@ -10,7 +10,10 @@ class FarlySyncServer {
   bool get isRunning => false;
   bool get isAdvertising => false;
 
-  Future<void> start(DeviceSyncPayload payload) async {
+  Future<void> start(
+    DeviceSyncPayload payload, {
+    Duration ttl = const Duration(minutes: 2),
+  }) async {
     throw UnsupportedError('Device sync needs the iOS or Android app.');
   }
 

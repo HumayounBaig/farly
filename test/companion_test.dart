@@ -2,7 +2,6 @@ import 'package:farly/control/remote_session.dart';
 import 'package:farly/discovery/network_context.dart';
 import 'package:farly/mac/companion_app.dart';
 import 'package:farly/models/farly_device.dart';
-import 'package:farly/models/remote_action.dart';
 import 'package:farly/storage/device_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
