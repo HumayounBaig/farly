@@ -55,10 +55,7 @@ Future<void> _promoteCastTvs(Map<String, FarlyDevice> byHost) async {
 }
 
 Future<bool> _answersAtvRemote(String host) async {
-  for (final port in [
-    DeviceBrand.androidTv.defaultPort!,
-    6467,
-  ]) {
+  for (final port in [DeviceBrand.androidTv.defaultPort!, 6467]) {
     try {
       final socket = await Socket.connect(
         host,
@@ -99,7 +96,15 @@ Future<void> _ssdp(Map<String, FarlyDevice> byHost) async {
       );
       if (message == null) return;
       final device = classifySsdp(message);
-      if (device != null) putBetterDevice(byHost, device);
+      if (device == null) return;
+      // A LOCATION IP that isn't the sender is spoofed; hostnames are kept
+      // but never fetched (see _lookupName).
+      final host = device.host;
+      final spoofed =
+          host != null &&
+          InternetAddress.tryParse(host) != null &&
+          !locationMatchesSender(host, datagram.address.address);
+      if (!spoofed) putBetterDevice(byHost, device);
     });
     // UDP is lossy: send the batch twice inside the window.
     await Future<void>.delayed(const Duration(seconds: 1));
@@ -220,6 +225,8 @@ Future<void> _enrichNames(Map<String, FarlyDevice> byHost) async {
   }
 }
 
+const _maxDescriptionBytes = 256 * 1024;
+
 Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
   final host = device.host;
   if (host == null) return null;
@@ -234,18 +241,44 @@ Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
   } else {
     return null;
   }
-  if (uri == null) return null;
+  // Only fetch from an IP literal that the description URL also points at.
+  if (uri == null ||
+      InternetAddress.tryParse(host) == null ||
+      uri.host != host) {
+    return null;
+  }
   try {
-    final response = await client
-        .get(uri)
-        .timeout(const Duration(milliseconds: 800));
-    if (response.statusCode < 200 || response.statusCode >= 300) return null;
-    for (final tag in tags) {
-      final value = xmlTag(response.body, tag);
-      if (value != null) return value;
-    }
+    return await _fetchName(
+      client,
+      uri,
+      tags,
+    ).timeout(const Duration(seconds: 2));
   } catch (_) {
     return null;
+  }
+}
+
+Future<String?> _fetchName(
+  http.Client client,
+  Uri uri,
+  List<String> tags,
+) async {
+  {
+    final response = await client.send(http.Request('GET', uri));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      await response.stream.listen(null).cancel();
+      return null;
+    }
+    final bytes = <int>[];
+    await for (final chunk in response.stream) {
+      bytes.addAll(chunk);
+      if (bytes.length > _maxDescriptionBytes) return null;
+    }
+    final body = utf8.decode(bytes, allowMalformed: true);
+    for (final tag in tags) {
+      final value = xmlTag(body, tag);
+      if (value != null) return value;
+    }
   }
   return null;
 }

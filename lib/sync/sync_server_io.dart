@@ -21,6 +21,8 @@ class FarlySyncServer {
   DeviceSyncPayload? _payload;
   Timer? _ttl;
   var _advertising = false;
+  var _failedAttempts = 0;
+  var _locked = false;
 
   String get pin => _pin;
   int? get port => _server?.port;
@@ -43,6 +45,8 @@ class FarlySyncServer {
     await stop();
     _payload = payload;
     _pin = generateSyncPin();
+    _failedAttempts = 0;
+    _locked = false;
     _host = await _wifiIpv4();
 
     final server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
@@ -109,19 +113,16 @@ class FarlySyncServer {
   }
 
   Future<void> _handle(HttpRequest request) async {
-    request.response.headers.set('Access-Control-Allow-Origin', '*');
-    request.response.headers.set(
-      'Access-Control-Allow-Headers',
-      farlySyncPinHeader,
-    );
-    if (request.method == 'OPTIONS') {
-      request.response.statusCode = HttpStatus.noContent;
-      await request.response.close();
-      return;
+    try {
+      await _respond(request);
+    } catch (_) {
+      // stop() may force-close the connection while a reply is pending.
     }
+  }
 
+  Future<void> _respond(HttpRequest request) async {
     final payload = _payload;
-    if (payload == null) {
+    if (payload == null || _locked) {
       request.response.statusCode = HttpStatus.serviceUnavailable;
       await request.response.close();
       return;
@@ -133,13 +134,16 @@ class FarlySyncServer {
       return;
     }
 
-    final offered =
-        request.headers.value(farlySyncPinHeader) ??
-        request.uri.queryParameters['pin'];
-    if (offered != _pin) {
+    final offered = request.headers.value(farlySyncPinHeader);
+    if (offered == null || !constantTimeEquals(offered, _pin)) {
+      // Count synchronously so parallel guesses can't beat the limit.
+      final lockOut = ++_failedAttempts >= maxSyncPinFailures;
+      if (lockOut) _locked = true;
+      await Future<void>.delayed(const Duration(milliseconds: 300));
       request.response.statusCode = HttpStatus.unauthorized;
       request.response.write('bad pin');
       await request.response.close();
+      if (lockOut) unawaited(stop());
       return;
     }
 
@@ -148,6 +152,17 @@ class FarlySyncServer {
     request.response.write(body);
     await request.response.close();
   }
+}
+
+const maxSyncPinFailures = 5;
+
+bool constantTimeEquals(String a, String b) {
+  if (a.length != b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) {
+    diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
+  }
+  return diff == 0;
 }
 
 String generateSyncPin() {

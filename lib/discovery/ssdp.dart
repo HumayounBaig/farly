@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart' show listEquals;
+
 class SsdpMessage {
   const SsdpMessage(this.headers);
 
@@ -36,6 +40,13 @@ Uri? parseLocation(String? location) {
   final parsed = Uri.tryParse(location);
   if (parsed != null && parsed.host.isNotEmpty) return parsed;
   return Uri.tryParse('http://$location');
+}
+
+/// True when [host] is an IP literal equal to [sender] (zone suffix ignored).
+bool locationMatchesSender(String? host, String sender) {
+  final a = InternetAddress.tryParse(host?.split('%').first ?? '');
+  final b = InternetAddress.tryParse(sender.split('%').first);
+  return a != null && b != null && listEquals(a.rawAddress, b.rawAddress);
 }
 
 String? xmlTag(String body, String tag) {

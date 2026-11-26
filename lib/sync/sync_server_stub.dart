@@ -21,3 +21,7 @@ class FarlySyncServer {
 }
 
 String generateSyncPin() => '000000';
+
+const maxSyncPinFailures = 5;
+
+bool constantTimeEquals(String a, String b) => a == b;
