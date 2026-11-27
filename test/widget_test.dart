@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:farly/app.dart';
 import 'package:farly/control/remote_session.dart';
 import 'package:farly/discovery/network_context.dart';
@@ -508,6 +510,63 @@ void main() {
     expect(find.text('Arrange mode'), findsOneWidget);
     expect(find.text('Hidden — tap to show'), findsWidgets);
     expect(find.bySemanticsLabel('Show D-pad'), findsOneWidget);
+  });
+
+  Future<Completer<List<FarlyDevice>>> pumpHome(
+    WidgetTester tester, {
+    bool reduceMotion = false,
+  }) async {
+    final scan = Completer<List<FarlyDevice>>();
+    await tester.pumpWidget(
+      MediaQuery(
+        data: MediaQueryData(disableAnimations: reduceMotion),
+        child: FarlyApp(
+          readNetwork: _testNetwork,
+          store: MemoryDeviceStore([
+            const FarlyDevice(
+              id: 'lg@192.168.1.20',
+              name: 'Den',
+              kind: DeviceKind.screen,
+              brand: DeviceBrand.lg,
+              host: '192.168.1.20',
+              clientKey: 'k',
+            ),
+          ]),
+          scanDevices: () => scan.future,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return scan;
+  }
+
+  testWidgets('result shows brand and paired tags, no menu badge', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+    expect(find.textContaining('LG · Paired before'), findsOneWidget);
+    expect(find.byType(Badge), findsNothing);
+  });
+
+  testWidgets('scan rings animate only while scanning', (tester) async {
+    final scan = await pumpHome(tester);
+    await tester.tap(find.text('Scan the room'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.hasRunningAnimations, isTrue);
+    scan.complete(const []);
+    await tester.pumpAndSettle();
+    expect(tester.hasRunningAnimations, isFalse);
+  });
+
+  testWidgets('reduced motion keeps the scan rings still', (tester) async {
+    final scan = await pumpHome(tester, reduceMotion: true);
+    await tester.tap(find.text('Scan the room'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Listening'), findsOneWidget);
+    expect(tester.hasRunningAnimations, isFalse);
+    scan.complete(const []);
+    await tester.pump(const Duration(seconds: 3)); // first-scan retry delay
+    await tester.pumpAndSettle();
   });
 }
 

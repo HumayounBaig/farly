@@ -140,8 +140,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       _Header(
                         count: onNetwork.length,
                         networkLabel: room.network?.label,
-                        savedCount: room.devices.length,
-                        elsewhereCount: room.devicesElsewhere.length,
                         onOpenSaved: () =>
                             _scaffoldKey.currentState?.openDrawer(),
                       ),
@@ -212,9 +210,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           style: Theme.of(context).textTheme.labelMedium,
         ),
       ),
-      for (final device in devices) ...[
+      for (final device in _sorted(devices)) ...[
         _DeviceCard(
           device: device,
+          lastUsed: device.id == room.lastConnectedId,
           answered:
               device.lastSeen != null && device.lastSeen == room.lastScanAt,
           onOpen: () => openDevice(
@@ -238,6 +237,18 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         ),
       ),
     ];
+  }
+
+  /// Last used first, then paired TVs, then by brand. Wi-Fi cannot tell which
+  /// TV is physically nearest, so nothing here pretends to.
+  List<FarlyDevice> _sorted(List<FarlyDevice> devices) {
+    int weight(FarlyDevice d) => d.id == room.lastConnectedId
+        ? 0
+        : (d.token != null || d.clientKey != null ? 1 : 2);
+    return [...devices]..sort((a, b) {
+      final byWeight = weight(a).compareTo(weight(b));
+      return byWeight != 0 ? byWeight : a.brand.rank.compareTo(b.brand.rank);
+    });
   }
 
   Future<void> _editDevice(BuildContext context, FarlyDevice device) async {
@@ -299,19 +310,14 @@ class _Header extends StatelessWidget {
     required this.count,
     required this.onOpenSaved,
     this.networkLabel,
-    this.savedCount = 0,
-    this.elsewhereCount = 0,
   });
 
   final int count;
   final String? networkLabel;
-  final int savedCount;
-  final int elsewhereCount;
   final VoidCallback onOpenSaved;
 
   @override
   Widget build(BuildContext context) {
-    final badgeCount = elsewhereCount > 0 ? elsewhereCount : savedCount;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 20, 4),
       child: Row(
@@ -319,11 +325,7 @@ class _Header extends StatelessWidget {
           IconButton(
             tooltip: 'All saved devices',
             onPressed: onOpenSaved,
-            icon: Badge(
-              isLabelVisible: savedCount > 0,
-              label: Text('$badgeCount'),
-              child: const Icon(Icons.menu_rounded),
-            ),
+            icon: const Icon(Icons.menu_rounded),
           ),
           const FarlyMark(size: 36),
           const SizedBox(width: 12),
@@ -765,6 +767,7 @@ class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.device,
     required this.answered,
+    required this.lastUsed,
     required this.onOpen,
     required this.onEdit,
     required this.onLongPress,
@@ -772,6 +775,7 @@ class _DeviceCard extends StatelessWidget {
 
   final FarlyDevice device;
   final bool answered;
+  final bool lastUsed;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onLongPress;
@@ -806,6 +810,10 @@ class _DeviceCard extends StatelessWidget {
                         Text(
                           [
                             device.brand.label,
+                            if (lastUsed) 'Last used',
+                            if (device.token != null ||
+                                device.clientKey != null)
+                              'Paired before',
                             if (kDebugMode && device.host != null) device.host!,
                           ].join(' · '),
                           maxLines: 1,
