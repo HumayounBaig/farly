@@ -21,6 +21,7 @@ import '../widgets/scan_orb.dart';
 import '../widgets/edit_device_sheet.dart';
 import '../widgets/share_devices_sheet.dart';
 import '../widgets/tv_maker_badge.dart';
+import 'feedback_page.dart';
 import 'open_device.dart';
 
 class RoomPage extends StatefulWidget {
@@ -114,6 +115,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         onShareWithMac: () {
           Navigator.pop(context);
           unawaited(showShareDevicesSheet(context, room));
+        },
+        onFeedback: () {
+          Navigator.pop(context);
+          unawaited(
+            Navigator.push<void>(
+              context,
+              MaterialPageRoute(builder: (_) => const FeedbackPage()),
+            ),
+          );
         },
       ),
       body: FarlyBackdrop(
@@ -437,6 +447,7 @@ class _SavedDevicesDrawer extends StatelessWidget {
     required this.onEdit,
     required this.onForget,
     required this.onShareWithMac,
+    required this.onFeedback,
   });
 
   final RoomModel room;
@@ -444,6 +455,7 @@ class _SavedDevicesDrawer extends StatelessWidget {
   final ValueChanged<FarlyDevice> onEdit;
   final ValueChanged<FarlyDevice> onForget;
   final VoidCallback onShareWithMac;
+  final VoidCallback onFeedback;
 
   @override
   Widget build(BuildContext context) {
@@ -528,6 +540,11 @@ class _SavedDevicesDrawer extends StatelessWidget {
                       onPressed: total == 0 ? null : onShareWithMac,
                     ),
                   ),
+                ListTile(
+                  leading: const Icon(Icons.feedback_outlined),
+                  title: const Text('Send feedback'),
+                  onTap: onFeedback,
+                ),
               ],
             );
           },

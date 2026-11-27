@@ -6,6 +6,7 @@ import '../control/remote_session.dart';
 import '../control/session_factory.dart';
 import '../models/farly_device.dart';
 import '../models/remote_action.dart';
+import 'feedback_log.dart';
 
 typedef SessionBuilder = RemoteSession Function(
   FarlyDevice device,
@@ -23,7 +24,9 @@ class RemoteController extends ChangeNotifier {
     this.relocate,
   }) : _device = device,
        _onCredentials = onCredentials,
-       session = (sessions ?? buildSession)(device, onCredentials);
+       session = (sessions ?? buildSession)(device, onCredentials) {
+    feedbackLog.brands.add(device.brand.label);
+  }
 
   final RemoteSession session;
   final CredentialSink _onCredentials;
@@ -43,6 +46,10 @@ class RemoteController extends ChangeNotifier {
     _subscription = session.updates.listen((update) {
       phase = update.phase;
       detail = update.detail;
+      feedbackLog.add(
+        '${_device.brand.label} ${update.phase.name}'
+        '${update.detail == null ? '' : ': ${update.detail}'}',
+      );
       if (update.phase == SessionPhase.ready) {
         _wasReady = true;
         _recoveryUsed = false;
@@ -158,6 +165,7 @@ class RemoteController extends ChangeNotifier {
       return;
     }
     final result = await session.send(action);
+    _logFailure('send ${action.name}', result);
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -170,6 +178,7 @@ class RemoteController extends ChangeNotifier {
       return;
     }
     final result = await session.sendMenuProbe(commandId);
+    _logFailure('menu probe', result);
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -246,6 +255,7 @@ class RemoteController extends ChangeNotifier {
       return;
     }
     final result = await session.launch(shortcut);
+    _logFailure('launch app', result);
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -293,6 +303,11 @@ class RemoteController extends ChangeNotifier {
       return false;
     }
     return true;
+  }
+
+  /// Typed text never reaches the log, so text commands are not logged here.
+  void _logFailure(String what, CommandResult result) {
+    if (!result.ok) feedbackLog.add('$what failed: ${result.detail ?? 'no detail'}');
   }
 
   bool _disposed = false;

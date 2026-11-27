@@ -6,6 +6,7 @@ import '../models/farly_device.dart';
 import '../storage/device_store.dart';
 import '../sync/device_sync.dart';
 import 'device_merge.dart';
+import 'feedback_log.dart';
 
 typedef NetworkReader = Future<NetworkFingerprint?> Function();
 
@@ -144,6 +145,7 @@ class RoomModel extends ChangeNotifier {
             'Scanning runs in the Farly app on iOS, Android, or Mac. The browser cannot see your Wi-Fi.';
         return;
       }
+      feedbackLog.add('Scan started');
       await refreshNetwork();
       var found = await _scanDevices();
       if (found.isEmpty && !_scannedThisSession) {
@@ -152,6 +154,7 @@ class RoomModel extends ChangeNotifier {
         found = await _scanDevices();
       }
       _scannedThisSession = true;
+      feedbackLog.add('Scan finished: ${found.length} found');
       final seenAt = DateTime.now();
       final stamped = [
         for (final device in found) _stampNetwork(device),
@@ -163,6 +166,7 @@ class RoomModel extends ChangeNotifier {
             'Nothing answered. Allow Local Network for Farly, stay on the TV’s Wi-Fi, or Add by address.';
       }
     } catch (_) {
+      feedbackLog.add('Scan stopped early');
       notice = 'The scan stopped early. You can add a device by address.';
     } finally {
       scanning = false;
@@ -271,8 +275,10 @@ class RoomModel extends ChangeNotifier {
   Future<FarlyDevice?> relocate(FarlyDevice device) async {
     if (!roomScanSupported) return null;
     try {
+      feedbackLog.add('Rescan for saved TV started');
       await refreshNetwork();
       final found = await _scanDevices();
+      feedbackLog.add('Rescan finished: ${found.length} found');
       if (found.isEmpty) return null;
       final seenAt = DateTime.now();
       final stamped = [
