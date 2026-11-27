@@ -268,6 +268,103 @@ void main() {
     await again.close();
   });
 
+  test('batch edit sends the full field value and counters', () {
+    final edit = decodeProto(
+      atvImeBatchEdit(
+        imeCounter: 7,
+        fieldCounter: 3,
+        text: 'abc',
+        start: 2,
+        end: 2,
+      ),
+    ).message(21)!;
+    expect(edit.integer(1), 7);
+    expect(edit.integer(2), 3);
+    final info = edit.message(3)!;
+    expect(info.integer(1), 1);
+    final object = info.message(2)!;
+    expect(object.integer(1), 2);
+    expect(object.integer(2), 2);
+    expect(object.string(3), 'abc');
+  });
+
+  test('characters map to key codes', () {
+    expect(atvCharKeyCode('a'), 29);
+    expect(atvCharKeyCode('z'), 54);
+    expect(atvCharKeyCode('A'), 29);
+    expect(atvCharKeyCode('0'), 7);
+    expect(atvCharKeyCode('9'), 16);
+    expect(atvCharKeyCode(' '), 62);
+    expect(atvCharKeyCode('é'), isNull);
+  });
+
+  Future<AndroidTvSession> pairedSession(_FakeTv tv) async {
+    final session = AndroidTvSession(
+      device: FarlyDevice(
+        id: 'androidTv@127.0.0.1',
+        name: 'TCL',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.androidTv,
+        host: '127.0.0.1',
+        token: _client.certificatePem,
+        clientKey: _client.privateKeyPem,
+      ),
+      pairingPort: tv.pairingPort,
+      remotePort: tv.remotePort,
+      identities: () async => _client,
+    );
+    await tv.trust(_client);
+    await session.open();
+    await pumpEventQueue();
+    return session;
+  }
+
+  test('typing with no IME field sends keys immediately', () async {
+    final tv = await _FakeTv.start();
+    addTearDown(tv.stop);
+    final session = await pairedSession(tv);
+    final started = DateTime.now();
+    expect((await session.sendText('hi 2')).ok, isTrue);
+    expect(DateTime.now().difference(started).inMilliseconds, lessThan(1000));
+    await tv.waitForKeys(4);
+    expect(tv.keys, [36, 37, 62, 9]);
+    expect(tv.batchEdits, isEmpty);
+    await session.close();
+  });
+
+  test('an unanswered IME edit falls back to keys and stops waiting', () async {
+    final tv = await _FakeTv.start();
+    addTearDown(tv.stop);
+    tv.imeFocus = (ProtoWriter()..message(
+          20,
+          ProtoWriter()
+            ..message(1, ProtoWriter()..varint(1, 5))
+            ..message(
+              2,
+              ProtoWriter()
+                ..varint(1, 9)
+                ..string(2, 'ab'),
+            ),
+        ))
+        .toBytes();
+    final session = await pairedSession(tv);
+    await pumpEventQueue();
+    expect((await session.sendText('c')).ok, isTrue);
+    expect(tv.batchEdits, hasLength(1));
+    final object = tv.batchEdits.single.message(3)!.message(2)!;
+    expect(object.string(3), 'abc'); // full value, not the delta
+    expect(tv.batchEdits.single.integer(1), 5);
+    expect(tv.batchEdits.single.integer(2), 9);
+    await tv.waitForKeys(1);
+    expect(tv.keys, [31]);
+
+    final started = DateTime.now();
+    expect((await session.sendText('d')).ok, isTrue);
+    expect(DateTime.now().difference(started).inMilliseconds, lessThan(1000));
+    expect(tv.batchEdits, hasLength(1)); // IME no longer attempted
+    await session.close();
+  });
+
   test('a TV that does not answer fails with a clear message', () async {
     final closed = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final port = closed.port;
@@ -374,6 +471,8 @@ class _FakeTv {
   final SecureServerSocket _remote;
   final keys = <int>[];
   final appLinks = <String>[];
+  final batchEdits = <ProtoFields>[];
+  Uint8List? imeFocus; // sent right after start, e.g. a focused text field
   final _trusted = <String>{};
   var pingAnswered = false;
   int? activeReply;
@@ -500,12 +599,16 @@ class _FakeTv {
                   .toBytes(),
             ),
           );
+          final focus = imeFocus;
+          if (focus != null) socket.add(atvFrame(focus));
         } else if (fields.has(2)) {
           activeReply = fields.message(2)!.integer(1);
         } else if (fields.has(9)) {
           pingAnswered = fields.message(9)!.integer(1) == 41;
         } else if (fields.has(10)) {
           keys.add(fields.message(10)!.integer(1)!);
+        } else if (fields.has(21)) {
+          batchEdits.add(fields.message(21)!);
         } else if (fields.has(90)) {
           appLinks.add(
             String.fromCharCodes(fields.message(90)![1]!.first as Uint8List),
@@ -514,6 +617,9 @@ class _FakeTv {
       }
     });
   }
+
+  Future<void> trust(AtvIdentity identity) async =>
+      _trusted.add(_hex(identity.certificateDer));
 
   Future<void> waitForKeys(int count) async {
     for (var i = 0; i < 100 && keys.length < count; i++) {

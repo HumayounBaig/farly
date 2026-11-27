@@ -406,7 +406,9 @@ class AndroidTvSession extends RemoteSession {
     // On-screen keyboards swallow key events; PS5/Xbox keyboards never report
     // an Android text field.
     if (_textFieldFocused) {
-      final start = _textValue.length;
+      // The TV expects the whole new field text, not just the typed delta.
+      final value = '$_textValue$text';
+      final cursor = value.length - 1;
       final pending = Completer<bool>();
       _editEcho = pending;
       _editEchoFromFieldStatus = false;
@@ -414,9 +416,9 @@ class AndroidTvSession extends RemoteSession {
         atvImeBatchEdit(
           imeCounter: _imeCounter,
           fieldCounter: _imeFieldCounter,
-          text: text,
-          start: start,
-          end: start,
+          text: value,
+          start: cursor,
+          end: cursor,
         ),
       );
       if (!ok) {
@@ -431,9 +433,12 @@ class AndroidTvSession extends RemoteSession {
       if (identical(_editEcho, pending)) _editEcho = null;
       if (accepted) {
         // Field-status ack already set _textValue from the TV.
-        if (!fromField) _textValue = '$_textValue$text';
+        if (!fromField) _textValue = value;
         return const CommandResult(true);
       }
+      // No echo: this app (YouTube's own keyboard) is not using the TV's input
+      // method. Stop waiting 1.5s per send; the next focus event re-arms it.
+      _textFieldFocused = false;
     }
 
     final asKeys = await _sendTextAsKeys(text);
