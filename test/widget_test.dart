@@ -553,9 +553,11 @@ void main() {
     await tester.tap(find.text('Scan the room'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(tester.hasRunningAnimations, isTrue);
+    expect(find.byKey(const Key('scan-progress')), findsOneWidget);
     scan.complete(const []);
     await tester.pumpAndSettle();
     expect(tester.hasRunningAnimations, isFalse);
+    expect(find.byKey(const Key('scan-progress')), findsNothing);
   });
 
   testWidgets('reduced motion keeps the scan rings still', (tester) async {
@@ -564,6 +566,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Listening'), findsOneWidget);
     expect(tester.hasRunningAnimations, isFalse);
+    expect(find.byKey(const Key('scan-progress')), findsNothing);
     scan.complete(const []);
     await tester.pump(const Duration(seconds: 3)); // first-scan retry delay
     await tester.pumpAndSettle();

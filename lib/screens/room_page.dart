@@ -147,6 +147,21 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                         child: BottomAligned(
                           padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
                           children: [
+                            // Subtle progress line while a scan runs; the orb's rings alone are easy to miss.
+                            if (room.scanning &&
+                                !MediaQuery.disableAnimationsOf(context))
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: const LinearProgressIndicator(
+                                    key: Key('scan-progress'),
+                                    minHeight: 2,
+                                    color: FarlyColors.horizon,
+                                    backgroundColor: Colors.transparent,
+                                  ),
+                                ),
+                              ),
                             if (onNetwork.isEmpty)
                               room.devices.isEmpty
                                   ? const _EmptyHorizon()
