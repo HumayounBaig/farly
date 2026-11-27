@@ -69,7 +69,7 @@ void main() {
     await pending;
   });
 
-  test('auto back only fires when Menu was the last action, once', () async {
+  test('auto back closes only the TV menus left open', () async {
     Future<List<RemoteAction>> run(
       List<RemoteAction> presses, [
       Future<void> Function(RemoteController c)? then,
@@ -93,9 +93,22 @@ void main() {
       return session.sent;
     }
 
-    expect(await run([RemoteAction.menu]), [RemoteAction.back]);
-    expect(await run([RemoteAction.menu, RemoteAction.back]), isEmpty);
-    expect(await run([RemoteAction.menu, RemoteAction.down]), isEmpty);
+    const back = RemoteAction.back;
+    expect(await run([RemoteAction.menu]), [back]);
+    expect(await run([RemoteAction.menu, back]), isEmpty);
+    // Changing settings inside the menu keeps it open.
+    expect(
+      await run([RemoteAction.menu, RemoteAction.down, RemoteAction.select]),
+      [back],
+    );
+    // Stack: two menus opened, one closed by the user, one left for us.
+    expect(
+      await run([RemoteAction.menu, RemoteAction.menu, back]),
+      [back],
+    );
+    expect(await run([RemoteAction.menu, RemoteAction.menu]), [back, back]);
+    expect(await run([RemoteAction.menu, RemoteAction.home]), isEmpty);
+    expect(await run([back, RemoteAction.menu, back, back]), isEmpty);
     expect(await run([RemoteAction.play]), isEmpty);
     expect(await run([]), isEmpty);
     expect(

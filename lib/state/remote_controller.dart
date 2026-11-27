@@ -153,20 +153,31 @@ class RemoteController extends ChangeNotifier {
         phase == SessionPhase.limited;
   }
 
-  /// Last key the user sent; only a trailing Menu warrants an automatic Back.
-  RemoteAction? _lastAction;
+  /// TV menu levels the user opened and has not backed out of: Menu pushes,
+  /// Back pops, Home or opening an app clears. Moving and selecting inside the
+  /// menu leaves it alone.
+  int _menuDepth = 0;
 
-  /// Sends Back on leaving the pad, only if Menu was the last thing pressed.
+  /// On leaving the pad, backs out of any TV menu still open; does nothing
+  /// otherwise, so a playing video is left alone.
   Future<void> sendAutoBack() async {
-    if (_lastAction != RemoteAction.menu) return;
-    await send(RemoteAction.back);
+    // shortcut: capped at 5 so a confused count can't spam Back.
+    for (var i = 0; i < 5 && _menuDepth > 0; i++) {
+      await send(RemoteAction.back);
+    }
+    _menuDepth = 0;
   }
 
   Future<void> send(RemoteAction action) async {
     if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
       return;
     }
-    _lastAction = action;
+    _menuDepth = switch (action) {
+      RemoteAction.menu => _menuDepth + 1,
+      RemoteAction.back => _menuDepth > 0 ? _menuDepth - 1 : 0,
+      RemoteAction.home => 0,
+      _ => _menuDepth,
+    };
     final result = await session.send(action);
     if (result.detail != null) {
       detail = result.detail;
@@ -179,7 +190,7 @@ class RemoteController extends ChangeNotifier {
     if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
       return;
     }
-    _lastAction = RemoteAction.menu;
+    _menuDepth += 1;
     final result = await session.sendMenuProbe(commandId);
     if (result.detail != null) {
       detail = result.detail;
@@ -256,7 +267,7 @@ class RemoteController extends ChangeNotifier {
       _notify();
       return;
     }
-    _lastAction = null; // an opened app, not a menu, is on screen
+    _menuDepth = 0; // an opened app, not a menu, is on screen
     final result = await session.launch(shortcut);
     if (result.detail != null) {
       detail = result.detail;
@@ -266,7 +277,6 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> sendText(String text) async {
     if (!_readyForText) return;
-    _lastAction = null; // typing means no TV menu is left open
     final result = await session.sendText(text);
     if (result.detail != null) {
       detail = result.detail;
@@ -276,7 +286,6 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> textBackspace() async {
     if (!_readyForText) return;
-    _lastAction = null; // typing means no TV menu is left open
     final result = await session.textBackspace();
     if (result.detail != null) {
       detail = result.detail;
@@ -286,7 +295,6 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> textEnter() async {
     if (!_readyForText) return;
-    _lastAction = null; // typing means no TV menu is left open
     final result = await session.textEnter();
     if (result.detail != null) {
       detail = result.detail;
