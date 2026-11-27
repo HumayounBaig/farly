@@ -7,6 +7,7 @@ void main() {
       expect(redact('connect 192.168.1.20:8002 failed'), 'connect [redacted]:8002 failed');
       expect(redact('to fe80::1a2b:3c4d%en0 now'), 'to [redacted] now');
       expect(redact('to 2001:db8:0:0:0:0:0:1 now'), 'to [redacted] now');
+      expect(redact('to ::ffff:192.168.1.5 now'), 'to [redacted] now');
       expect(redact('mac AA:BB:CC:11:22:33 seen'), 'mac [redacted] seen');
       expect(redact('mac aa-bb-cc-11-22-33 seen'), 'mac [redacted] seen');
       expect(redact('host living-room-tv.local down'), 'host [redacted] down');
@@ -36,6 +37,14 @@ void main() {
   });
 
   group('feedbackUri', () {
+    test('never splits an emoji when trimming', () {
+      final uri = feedbackUri('😀' * 100, log: FeedbackLog(), maxLength: 400);
+      final title = uri.queryParameters['title']!;
+      expect(title, matches(RegExp(r'^Feedback: (😀)+$')));
+      expect(title.runes.length, lessThanOrEqualTo('Feedback: '.length + 60));
+      expect(feedbackUri('😀' * 100, log: FeedbackLog()).queryParameters['title'], 'Feedback: ${'😀' * 60}');
+      expect(uri.queryParameters['body']!.runes.every((r) => r < 0xD800 || r > 0xDFFF), isTrue);
+    });
     test('encodes title and body and sets the label', () {
       final uri = feedbackUri('TV & remote "broke"', log: FeedbackLog());
       expect(uri.toString(), startsWith('$feedbackIssueBase?'));

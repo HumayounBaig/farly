@@ -25,10 +25,15 @@ class _FeedbackPageState extends State<FeedbackPage> {
   }
 
   Future<void> _send() async {
-    final opened = await launchUrl(
-      feedbackUri(_text.text, includeLog: _includeLog),
-      mode: LaunchMode.externalApplication,
-    );
+    bool opened;
+    try {
+      opened = await launchUrl(
+        feedbackUri(_text.text, includeLog: _includeLog),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      opened = false; // no browser or a platform error: show the same message
+    }
     if (!mounted) return;
     if (opened) {
       Navigator.pop(context);

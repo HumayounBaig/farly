@@ -8,7 +8,7 @@ const feedbackIssueBase = 'https://github.com/HumayounBaig/farly/issues/new';
 final _patterns = [
   RegExp(r'\b[0-9a-fA-F]{2}(?:[:-][0-9a-fA-F]{2}){5}\b'), // MAC
   RegExp(r'(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}(?:%\w+)?'), // IPv6, full
-  RegExp(r'[0-9a-fA-F:]*::[0-9a-fA-F:]*(?:%\w+)?'), // IPv6, compressed
+  RegExp(r'[0-9a-fA-F:]*::[0-9a-fA-F:.]*(?:%\w+)?'), // IPv6, compressed or IPv4-mapped
   RegExp(r'\b\d{1,3}(?:\.\d{1,3}){3}\b'), // IPv4
   RegExp(r'[\w-]+\.(?:local|lan|home|localdomain|internal)\b'), // hostnames
   RegExp(r'[A-Za-z0-9+/=_-]{20,}'), // tokens, keys, long hex/base64
@@ -72,7 +72,7 @@ Uri feedbackUri(
         ? '\n\n```\n${dropped > 0 ? '…older lines trimmed\n' : ''}'
               '${source.report(all.sublist(dropped))}\n```'
         : '';
-    final head = text.length > 60 ? text.substring(0, 60) : text;
+    final head = _clip(text, 60);
     return Uri.parse(feedbackIssueBase).replace(
       queryParameters: {
         'title': 'Feedback: $head',
@@ -88,8 +88,13 @@ Uri feedbackUri(
     uri = build();
   }
   while (uri.toString().length > maxLength && text.isNotEmpty) {
-    text = text.substring(0, text.length * 9 ~/ 10);
+    text = _clip(text, text.runes.length * 9 ~/ 10);
     uri = build();
   }
   return uri;
 }
+
+/// Cuts by code point so an emoji is never split into a broken surrogate.
+String _clip(String text, int max) => text.runes.length <= max
+    ? text
+    : String.fromCharCodes(text.runes.take(max));
