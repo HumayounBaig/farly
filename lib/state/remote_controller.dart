@@ -256,6 +256,7 @@ class RemoteController extends ChangeNotifier {
       _notify();
       return;
     }
+    _lastAction = null; // an opened app, not a menu, is on screen
     final result = await session.launch(shortcut);
     if (result.detail != null) {
       detail = result.detail;
@@ -265,6 +266,7 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> sendText(String text) async {
     if (!_readyForText) return;
+    _lastAction = null; // typing means no TV menu is left open
     final result = await session.sendText(text);
     if (result.detail != null) {
       detail = result.detail;
@@ -274,6 +276,7 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> textBackspace() async {
     if (!_readyForText) return;
+    _lastAction = null; // typing means no TV menu is left open
     final result = await session.textBackspace();
     if (result.detail != null) {
       detail = result.detail;
@@ -283,6 +286,7 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> textEnter() async {
     if (!_readyForText) return;
+    _lastAction = null; // typing means no TV menu is left open
     final result = await session.textEnter();
     if (result.detail != null) {
       detail = result.detail;

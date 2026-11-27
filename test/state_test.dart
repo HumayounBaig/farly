@@ -70,7 +70,10 @@ void main() {
   });
 
   test('auto back only fires when Menu was the last action, once', () async {
-    Future<List<RemoteAction>> run(List<RemoteAction> presses) async {
+    Future<List<RemoteAction>> run(
+      List<RemoteAction> presses, [
+      Future<void> Function(RemoteController c)? then,
+    ]) async {
       final session = _RecordingSession();
       final controller = RemoteController(
         device: _tv,
@@ -82,6 +85,7 @@ void main() {
       for (final a in presses) {
         await controller.send(a);
       }
+      await then?.call(controller);
       session.sent.clear();
       await controller.sendAutoBack();
       await controller.sendAutoBack();
@@ -94,6 +98,12 @@ void main() {
     expect(await run([RemoteAction.menu, RemoteAction.down]), isEmpty);
     expect(await run([RemoteAction.play]), isEmpty);
     expect(await run([]), isEmpty);
+    expect(
+      await run([RemoteAction.menu], (c) => c.launch(
+        AppShortcut.plain('YouTube', 'https://www.youtube.com'),
+      )),
+      isEmpty,
+    );
   });
 
   test('updateDevice replaces a row that only shares host history', () async {
