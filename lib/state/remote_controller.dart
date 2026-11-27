@@ -153,10 +153,20 @@ class RemoteController extends ChangeNotifier {
         phase == SessionPhase.limited;
   }
 
+  /// Last key the user sent; only a trailing Menu warrants an automatic Back.
+  RemoteAction? _lastAction;
+
+  /// Sends Back on leaving the pad, only if Menu was the last thing pressed.
+  Future<void> sendAutoBack() async {
+    if (_lastAction != RemoteAction.menu) return;
+    await send(RemoteAction.back);
+  }
+
   Future<void> send(RemoteAction action) async {
     if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
       return;
     }
+    _lastAction = action;
     final result = await session.send(action);
     if (result.detail != null) {
       detail = result.detail;
@@ -169,6 +179,7 @@ class RemoteController extends ChangeNotifier {
     if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
       return;
     }
+    _lastAction = RemoteAction.menu;
     final result = await session.sendMenuProbe(commandId);
     if (result.detail != null) {
       detail = result.detail;

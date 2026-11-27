@@ -69,6 +69,33 @@ void main() {
     await pending;
   });
 
+  test('auto back only fires when Menu was the last action, once', () async {
+    Future<List<RemoteAction>> run(List<RemoteAction> presses) async {
+      final session = _RecordingSession();
+      final controller = RemoteController(
+        device: _tv,
+        onCredentials: (_) {},
+        sessions: (device, sink) => session,
+      );
+      await controller.connect();
+      await Future<void>.delayed(Duration.zero);
+      for (final a in presses) {
+        await controller.send(a);
+      }
+      session.sent.clear();
+      await controller.sendAutoBack();
+      await controller.sendAutoBack();
+      controller.dispose();
+      return session.sent;
+    }
+
+    expect(await run([RemoteAction.menu]), [RemoteAction.back]);
+    expect(await run([RemoteAction.menu, RemoteAction.back]), isEmpty);
+    expect(await run([RemoteAction.menu, RemoteAction.down]), isEmpty);
+    expect(await run([RemoteAction.play]), isEmpty);
+    expect(await run([]), isEmpty);
+  });
+
   test('updateDevice replaces a row that only shares host history', () async {
     const saved = FarlyDevice(
       id: 'androidTv@192.168.1.20',
@@ -178,6 +205,28 @@ void main() {
       controller.dispose();
     },
   );
+}
+
+class _RecordingSession extends RemoteSession {
+  final sent = <RemoteAction>[];
+  final _updates = SessionUpdates();
+
+  @override
+  Stream<SessionUpdate> get updates => _updates.stream;
+
+  @override
+  Future<void> open() async => _updates.add(
+    const SessionUpdate(SessionPhase.ready, detail: 'Connected'),
+  );
+
+  @override
+  Future<CommandResult> send(RemoteAction action) async {
+    sent.add(action);
+    return const CommandResult(true);
+  }
+
+  @override
+  Future<void> close() => _updates.close();
 }
 
 class _HostAwareSession extends RemoteSession {

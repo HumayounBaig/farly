@@ -32,6 +32,15 @@ void main() {
     expect(uri.queryParameters['name'], isNotEmpty);
   });
 
+  test('samsung per-character keys for text without an IME session', () {
+    expect(samsungCharKey('a'), 'KEY_A');
+    expect(samsungCharKey('Z'), 'KEY_Z');
+    expect(samsungCharKey('7'), 'KEY_7');
+    expect(samsungCharKey(' '), 'KEY_SPACE');
+    expect(samsungCharKey('é'), isNull);
+    expect(samsungCharKey('ab'), isNull);
+  });
+
   test('typed text payloads for roku, samsung, and android tv', () {
     expect(rokuLitPath('a'), 'Lit_a');
     expect(rokuLitPath(' '), 'Lit_%20');

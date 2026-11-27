@@ -142,6 +142,7 @@ class LgSession extends RemoteSession {
       );
       if (!settled.isCompleted) settled.complete();
       _openPointer();
+      _registerKeyboard();
       return;
     }
 
@@ -151,6 +152,7 @@ class LgSession extends RemoteSession {
       );
       if (!settled.isCompleted) settled.complete();
       _openPointer();
+      _registerKeyboard();
       return;
     }
 
@@ -179,6 +181,21 @@ class LgSession extends RemoteSession {
         ),
       );
     }
+  }
+
+  /// Registering as the remote keyboard makes the TV route insertText to the
+  /// focused field of apps such as YouTube.
+  void _registerKeyboard() {
+    _command += 1;
+    _channel?.sink.add(
+      jsonEncode({
+        ...lgRequest(
+          'ime_$_command',
+          'ssap://com.webos.service.ime/registerRemoteKeyboard',
+        ),
+        'type': 'subscribe',
+      }),
+    );
   }
 
   void _openPointer() {

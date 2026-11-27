@@ -128,6 +128,10 @@ class SamsungSession extends RemoteSession {
     }
     if (decoded is! Map) return null;
     final event = decoded['event']?.toString() ?? '';
+    if (event.contains('imeStart')) _imeActive = true;
+    if (event.contains('imeEnd') || event.contains('imeDone')) {
+      _imeActive = false;
+    }
     final body = decoded['data'];
     if (body is Map && body['token'] is String) {
       final token = body['token'] as String;
@@ -145,6 +149,8 @@ class SamsungSession extends RemoteSession {
     }
     return null;
   }
+
+  var _imeActive = false;
 
   @override
   bool get supportsMenuProbes => true;
@@ -195,6 +201,22 @@ class SamsungSession extends RemoteSession {
     }
     if (text.isEmpty) {
       return const CommandResult(false, 'Nothing to type.');
+    }
+    // No IME session (e.g. YouTube search): SendInputString is dropped, so
+    // press one key per character when every character has a key.
+    final keys = [
+      for (final r in text.runes) samsungCharKey(String.fromCharCode(r)),
+    ];
+    if (!_imeActive && !keys.contains(null)) {
+      try {
+        for (final key in keys) {
+          channel.sink.add(jsonEncode(samsungKeyPayload(key!)));
+          await Future<void>.delayed(const Duration(milliseconds: 60));
+        }
+        return const CommandResult(true);
+      } catch (_) {
+        return const CommandResult(false, 'The text did not reach the TV.');
+      }
     }
     try {
       channel.sink.add(jsonEncode(samsungTextPayload(text)));
