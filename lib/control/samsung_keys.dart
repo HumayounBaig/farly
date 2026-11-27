@@ -82,9 +82,11 @@ Uri samsungSocketUri({
 /// Letters are unverified on real TVs; digits are standard remote keys.
 String? samsungCharKey(String character) {
   if (character.length != 1) return null;
-  final unit = character.toUpperCase().codeUnitAt(0);
-  if (unit >= 0x41 && unit <= 0x5a || unit >= 0x30 && unit <= 0x39) {
-    return 'KEY_${String.fromCharCode(unit)}';
+  final raw = character.codeUnitAt(0);
+  if (raw >= 0x61 && raw <= 0x7a ||
+      raw >= 0x41 && raw <= 0x5a ||
+      raw >= 0x30 && raw <= 0x39) {
+    return 'KEY_${character.toUpperCase()}';
   }
   return switch (character) {
     ' ' => 'KEY_SPACE',

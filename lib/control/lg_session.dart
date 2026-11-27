@@ -121,6 +121,10 @@ class LgSession extends RemoteSession {
     );
   }
 
+  /// True for replies to the registerRemoteKeyboard subscription (id `ime_*`).
+  static bool isLgKeyboardReply(Object? id) =>
+      id is String && id.startsWith('ime_');
+
   void _onMessage(Object? data, Completer<void> settled) {
     if (data is! String) return;
     final Object? decoded;
@@ -130,6 +134,8 @@ class LgSession extends RemoteSession {
       return;
     }
     if (decoded is! Map) return;
+    // Keyboard subscription replies must never fail the session or show pairing.
+    if (isLgKeyboardReply(decoded['id'])) return;
     final type = decoded['type']?.toString() ?? '';
     final payload = decoded['payload'];
     final body = payload is Map ? payload : const <String, dynamic>{};

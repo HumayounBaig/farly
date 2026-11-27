@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:farly/control/atv_wire.dart';
 import 'package:farly/control/lg_registration.dart';
+import 'package:farly/control/lg_session.dart';
 import 'package:farly/control/roku_session.dart';
 import 'package:farly/control/samsung_keys.dart';
 import 'package:farly/models/farly_device.dart';
@@ -38,7 +39,15 @@ void main() {
     expect(samsungCharKey('7'), 'KEY_7');
     expect(samsungCharKey(' '), 'KEY_SPACE');
     expect(samsungCharKey('é'), isNull);
+    expect(samsungCharKey('ß'), isNull);
+    expect(samsungCharKey('ı'), isNull);
     expect(samsungCharKey('ab'), isNull);
+  });
+
+  test('lg keyboard subscription replies are recognised by id', () {
+    expect(LgSession.isLgKeyboardReply('ime_3'), isTrue);
+    expect(LgSession.isLgKeyboardReply('pointer_2'), isFalse);
+    expect(LgSession.isLgKeyboardReply(null), isFalse);
   });
 
   test('typed text payloads for roku, samsung, and android tv', () {

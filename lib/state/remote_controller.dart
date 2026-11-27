@@ -162,13 +162,14 @@ class RemoteController extends ChangeNotifier {
   /// otherwise, so a playing video is left alone.
   Future<void> sendAutoBack() async {
     // shortcut: capped at 5 so a confused count can't spam Back.
-    for (var i = 0; i < 5 && _menuDepth > 0; i++) {
+    for (var i = 0; i < 5 && _menuDepth > 0 && !_disposed; i++) {
       await send(RemoteAction.back);
     }
-    _menuDepth = 0;
+    if (!_disposed) _menuDepth = 0;
   }
 
   Future<void> send(RemoteAction action) async {
+    if (_disposed) return;
     if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
       return;
     }
