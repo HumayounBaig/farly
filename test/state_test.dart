@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:farly/control/remote_session.dart';
@@ -67,6 +68,28 @@ void main() {
     );
     controller.dispose();
     await pending;
+  });
+
+  test('text edits run one at a time, in order', () async {
+    final session = _SlowTextSession();
+    final controller = RemoteController(
+      device: _tv,
+      onCredentials: (_) {},
+      sessions: (device, sink) => session,
+    );
+    await controller.connect();
+    await Future<void>.delayed(Duration.zero);
+    final first = controller.sendText('ab');
+    final second = controller.sendText('cd');
+    await Future<void>.delayed(Duration.zero);
+    expect(session.log, ['start ab']); // second waits for the first
+    session.gates.first.complete();
+    await first;
+    await Future<void>.delayed(Duration.zero);
+    session.gates.last.complete();
+    await second;
+    expect(session.log, ['start ab', 'end ab', 'start cd', 'end cd']);
+    controller.dispose();
   });
 
   test('auto back closes only the TV menus left open', () async {
@@ -250,6 +273,25 @@ class _RecordingSession extends RemoteSession {
 
   @override
   Future<void> close() => _updates.close();
+}
+
+/// Holds each text edit open until the test releases it.
+class _SlowTextSession extends _RecordingSession {
+  final log = <String>[];
+  final gates = <Completer<void>>[];
+
+  @override
+  bool get supportsText => true;
+
+  @override
+  Future<CommandResult> sendText(String text) async {
+    log.add('start $text');
+    final gate = Completer<void>();
+    gates.add(gate);
+    await gate.future;
+    log.add('end $text');
+    return const CommandResult(true);
+  }
 }
 
 class _HostAwareSession extends RemoteSession {

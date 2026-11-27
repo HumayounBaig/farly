@@ -278,7 +278,7 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> sendText(String text) async {
     if (!_readyForText) return;
-    final result = await session.sendText(text);
+    final result = await _inOrder(() => session.sendText(text));
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -287,7 +287,7 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> textBackspace() async {
     if (!_readyForText) return;
-    final result = await session.textBackspace();
+    final result = await _inOrder(() => session.textBackspace());
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -296,11 +296,21 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> textEnter() async {
     if (!_readyForText) return;
-    final result = await session.textEnter();
+    final result = await _inOrder(() => session.textEnter());
     if (result.detail != null) {
       detail = result.detail;
       _notify();
     }
+  }
+
+  /// Text edits run one at a time, in order: an overlapping send could make a
+  /// TV apply the same text twice or build on a stale field value.
+  Future<void> _textQueue = Future<void>.value();
+
+  Future<CommandResult> _inOrder(Future<CommandResult> Function() edit) {
+    final run = _textQueue.then((_) => edit());
+    _textQueue = run.then((_) {}, onError: (_) {});
+    return run;
   }
 
   bool get _readyForText {
