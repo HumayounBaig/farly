@@ -548,7 +548,8 @@ class AndroidTvSession extends RemoteSession {
     }
     final capped = String.fromCharCodes(query.runes.take(200));
     final url =
-        'https://www.youtube.com/results?search_query=${Uri.encodeQueryComponent(capped)}';
+        // %20, not '+': YouTube's TV app shows a literal plus for spaces.
+        'https://www.youtube.com/results?search_query=${Uri.encodeComponent(capped)}';
     return link.send(atvAppLink(url))
         ? const CommandResult(true)
         : const CommandResult(false, 'The TV did not open YouTube.');

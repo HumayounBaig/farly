@@ -170,6 +170,57 @@ void main() {
       await tester.pumpAndSettle();
       expect(enters, 0);
     });
+
+    Future<({List<String> searches, List<int> enters})> pumpUnconfirmed(
+      WidgetTester tester, {
+      bool password = false,
+    }) async {
+      final searches = <String>[];
+      final enters = <int>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showTvKeyboardSheet(
+                context: context,
+                onSend: (_) async => false, // no TV text box took it
+                onEnter: () async => enters.add(1),
+                onSearchYoutube: (q) async {
+                  searches.add(q);
+                  return true;
+                },
+                onSendKeys: (_) async => true,
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      if (password) {
+        await tester.tap(find.byIcon(Icons.visibility_rounded));
+        await tester.pumpAndSettle();
+      }
+      await tester.enterText(find.byType(TextField), 'baby sleep song');
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+      return (searches: searches, enters: enters);
+    }
+
+    testWidgets('Done searches YouTube when no TV text box took the text',
+        (tester) async {
+      final res = await pumpUnconfirmed(tester);
+      expect(res.searches, ['baby sleep song']);
+      expect(res.enters, isEmpty);
+    });
+
+    testWidgets('Done never sends a password to YouTube search',
+        (tester) async {
+      final res = await pumpUnconfirmed(tester, password: true);
+      expect(res.searches, isEmpty);
+      expect(res.enters, isEmpty);
+    });
   });
 }
 

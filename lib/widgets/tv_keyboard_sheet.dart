@@ -90,11 +90,28 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
 
   Future<void> _send() async {
     final value = _text.text;
-    if (value.isEmpty) return;
+    if (value.isEmpty) {
+      // After grid typing, Done presses YouTube's own Search key.
+      if (_gridEnd != null && widget.onSendKeys != null) await _gridSearch();
+      return;
+    }
+    var searched = false;
     await _run(() async {
       final landed = await widget.onSend(value);
       if (!mounted) return;
       if (!landed) {
+        // No TV text box took it (YouTube draws its own keyboard): search
+        // YouTube instead. Never for passwords, which would land in history.
+        if (widget.onSearchYoutube != null && !_obscure) {
+          searched = await widget.onSearchYoutube!(value.trim());
+          if (!mounted) return;
+          if (searched) {
+            setState(() => _error = null);
+            _text.clear();
+            HapticFeedback.lightImpact();
+            return;
+          }
+        }
         // Enter would click whatever key the TV's grid has highlighted.
         setState(() => _error = widget.failureDetail?.call());
         return;

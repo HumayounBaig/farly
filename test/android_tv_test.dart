@@ -250,7 +250,7 @@ void main() {
     expect(tv.activeReply, 622 & atvFeatures);
     expect(tv.appLinks, [
       'https://www.netflix.com/title',
-      'https://www.youtube.com/results?search_query=cats+%26+dogs+%C3%B1',
+      'https://www.youtube.com/results?search_query=cats%20%26%20dogs%20%C3%B1',
     ]);
     await session.close();
 
