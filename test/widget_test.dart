@@ -101,7 +101,7 @@ void main() {
     await tester.enterText(find.byType(TextField).last, 'hello');
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Would type'), findsOneWidget);
+    expect(find.textContaining('Would type'), findsWidgets); // page + sheet
   });
 
   testWidgets('hold a device to rename it and pick an icon', (tester) async {

@@ -49,6 +49,7 @@ class AndroidTvSession extends RemoteSession {
   var _hasImeCounter = false;
   var _hasImeFieldCounter = false;
   var _textFieldFocused = false;
+  var _imeFromKeyInject = false;
   var _textValue = '';
   Completer<bool>? _editEcho;
   var _editEchoFromFieldStatus = false;
@@ -128,6 +129,7 @@ class AndroidTvSession extends RemoteSession {
     _hasImeCounter = false;
     _hasImeFieldCounter = false;
     _textFieldFocused = false;
+    _imeFromKeyInject = false;
     _textValue = '';
     _editEcho = null;
     _editEchoFromFieldStatus = false;
@@ -169,6 +171,7 @@ class AndroidTvSession extends RemoteSession {
             :final fieldValue,
             :final hasFieldStatus,
           ):
+            _imeFromKeyInject = fromKeyInject;
             // Live counters only arrive on remote_ime_key_inject. Batch-edit
             // echoes often carry a stale placeholder and must not win.
             if (fromKeyInject || imeCounter != 0) {
@@ -402,11 +405,15 @@ class AndroidTvSession extends RemoteSession {
       return const CommandResult(false, 'Nothing to type.');
     }
 
+    var imeAttempted = false;
     // Prefer the TV input-method path only while a field is focused.
     // On-screen keyboards swallow key events; PS5/Xbox keyboards never report
     // an Android text field.
     if (_textFieldFocused) {
-      final start = _textValue.length;
+      // Same as androidtvremote2 send_text: the inserted text only, cursor
+      // (start == end) counted in code points after it.
+      final value = '$_textValue$text';
+      final cursor = text.runes.length;
       final pending = Completer<bool>();
       _editEcho = pending;
       _editEchoFromFieldStatus = false;
@@ -415,29 +422,43 @@ class AndroidTvSession extends RemoteSession {
           imeCounter: _imeCounter,
           fieldCounter: _imeFieldCounter,
           text: text,
-          start: start,
-          end: start,
+          start: cursor,
+          end: cursor,
         ),
       );
       if (!ok) {
         _editEcho = null;
         return const CommandResult(false, 'The text did not reach the TV.');
       }
-      final accepted = await pending.future.timeout(
+      var accepted = await pending.future.timeout(
         const Duration(milliseconds: 1500),
         onTimeout: () => false,
       );
+      accepted =
+          accepted || pending.isCompleted; // late echo: don't double type
       final fromField = _editEchoFromFieldStatus;
       if (identical(_editEcho, pending)) _editEcho = null;
       if (accepted) {
         // Field-status ack already set _textValue from the TV.
-        if (!fromField) _textValue = '$_textValue$text';
+        if (!fromField) _textValue = value;
         return const CommandResult(true);
       }
+      // No echo: this app (YouTube's own keyboard) is not using the TV's input
+      // method. Stop waiting 1.5s per send; the next focus event re-arms it.
+      _textFieldFocused = false;
+      imeAttempted = true;
     }
 
     final asKeys = await _sendTextAsKeys(text);
-    if (asKeys.ok) return asKeys;
+    if (asKeys.ok) {
+      // Counters only, never the typed text.
+      final why = imeAttempted
+          ? 'TV did not confirm the text (ime $_imeCounter, field $_imeFieldCounter, from ${_imeFromKeyInject ? 'key inject' : 'show request'})'
+          : 'TV reported no text box (ime $_imeCounter/$_imeFieldCounter)';
+      return CommandResult.unconfirmed(
+        '$why. Sent as key presses. If nothing appeared, this app’s keyboard doesn’t take typing from Farly — use the TV remote for this box.',
+      );
+    }
 
     return CommandResult(
       false,

@@ -87,7 +87,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       unawaited(_retryOnResume());
     } else if (state == AppLifecycleState.hidden) {
       // Backing out of the TV menu when the app is minimized.
-      unawaited(_remote.send(RemoteAction.back));
+      unawaited(_remote.sendAutoBack());
     }
   }
 
@@ -128,14 +128,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     unawaited(_phoneVolume.stop());
     _remote.removeListener(_rememberWhenReady);
     final remote = _remote;
-    // Press TV Back once on leaving the pad; close the session only after it goes out.
-    unawaited(
-      remote
-          .send(RemoteAction.back)
-          .timeout(const Duration(seconds: 2))
-          .catchError((_) {})
-          .whenComplete(remote.dispose),
-    );
+    // Back out of a left-open TV menu; close the session only after it goes out.
+    unawaited(remote
+        .sendAutoBack()
+        .timeout(const Duration(seconds: 2))
+        .catchError((_) {})
+        .whenComplete(remote.dispose));
     super.dispose();
   }
 
@@ -364,6 +362,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.keyboard => () => showTvKeyboardSheet(
         context: context,
         onSend: _remote.sendText,
+        failureDetail: () => _remote.textDetail,
         onEnter: _remote.textEnter,
         onBackspace: _remote.textBackspace,
       ),

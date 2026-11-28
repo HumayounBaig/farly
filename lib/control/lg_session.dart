@@ -144,6 +144,10 @@ class LgSession extends RemoteSession {
     );
   }
 
+  /// True for replies to the registerRemoteKeyboard subscription (id `ime_*`).
+  static bool isLgKeyboardReply(Object? id) =>
+      id is String && id.startsWith('ime_');
+
   void _onMessage(Object? data, Completer<void> settled) {
     if (data is! String) return;
     final Object? decoded;
@@ -153,6 +157,8 @@ class LgSession extends RemoteSession {
       return;
     }
     if (decoded is! Map) return;
+    // Keyboard subscription replies must never fail the session or show pairing.
+    if (isLgKeyboardReply(decoded['id'])) return;
     final waiting = _pending[decoded['id']];
     if (waiting != null) {
       if (!waiting.isCompleted) waiting.complete(decoded);
@@ -172,6 +178,7 @@ class LgSession extends RemoteSession {
       );
       if (!settled.isCompleted) settled.complete();
       _openPointer();
+      _registerKeyboard();
       return;
     }
 
@@ -181,6 +188,7 @@ class LgSession extends RemoteSession {
       );
       if (!settled.isCompleted) settled.complete();
       _openPointer();
+      _registerKeyboard();
       return;
     }
 
@@ -209,6 +217,21 @@ class LgSession extends RemoteSession {
         ),
       );
     }
+  }
+
+  /// Registering as the remote keyboard makes the TV route insertText to the
+  /// focused field of apps such as YouTube.
+  void _registerKeyboard() {
+    _command += 1;
+    _channel?.sink.add(
+      jsonEncode({
+        ...lgRequest(
+          'ime_$_command',
+          'ssap://com.webos.service.ime/registerRemoteKeyboard',
+        ),
+        'type': 'subscribe',
+      }),
+    );
   }
 
   void _openPointer() {

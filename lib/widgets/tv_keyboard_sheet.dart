@@ -8,7 +8,8 @@ import 'keys.dart';
 /// Types into the focused field on the TV (search, PIN, password).
 Future<void> showTvKeyboardSheet({
   required BuildContext context,
-  required Future<void> Function(String text) onSend,
+  required Future<bool> Function(String text) onSend,
+  String? Function()? failureDetail,
   Future<void> Function()? onEnter,
   Future<void> Function()? onBackspace,
 }) {
@@ -18,6 +19,7 @@ Future<void> showTvKeyboardSheet({
     backgroundColor: Colors.transparent,
     builder: (context) => _TvKeyboardSheet(
       onSend: onSend,
+      failureDetail: failureDetail,
       onEnter: onEnter,
       onBackspace: onBackspace,
     ),
@@ -27,11 +29,13 @@ Future<void> showTvKeyboardSheet({
 class _TvKeyboardSheet extends StatefulWidget {
   const _TvKeyboardSheet({
     required this.onSend,
+    this.failureDetail,
     this.onEnter,
     this.onBackspace,
   });
 
-  final Future<void> Function(String text) onSend;
+  final Future<bool> Function(String text) onSend;
+  final String? Function()? failureDetail;
   final Future<void> Function()? onEnter;
   final Future<void> Function()? onBackspace;
 
@@ -43,6 +47,7 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
   final _text = TextEditingController();
   var _obscure = false;
   var _busy = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -64,12 +69,19 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
     final value = _text.text;
     if (value.isEmpty) return;
     await _run(() async {
-      await widget.onSend(value);
+      final landed = await widget.onSend(value);
+      if (!mounted) return;
+      if (!landed) {
+        // Enter would click whatever key the TV's grid has highlighted.
+        setState(() => _error = widget.failureDetail?.call());
+        return;
+      }
       // Android TV password/PIN fields wait for IME Done (KEYCODE_ENTER).
       if (widget.onEnter != null) {
         await widget.onEnter!();
       }
       if (!mounted) return;
+      setState(() => _error = null);
       _text.clear();
       HapticFeedback.lightImpact();
     });
@@ -166,6 +178,10 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
                 ),
               ),
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(_error!, style: Theme.of(context).textTheme.bodySmall),
+            ],
             const SizedBox(height: 14),
             Row(
               children: [

@@ -165,10 +165,34 @@ class RemoteController extends ChangeNotifier {
         phase == SessionPhase.limited;
   }
 
+  /// TV menu levels the user opened and has not backed out of: Menu pushes,
+  /// Back pops, Home or opening an app clears. Moving and selecting inside the
+  /// menu leaves it alone.
+  int _menuDepth = 0;
+
+  /// On leaving the pad, backs out of any TV menu still open; does nothing
+  /// otherwise, so a playing video is left alone.
+  Future<void> sendAutoBack() async {
+    // shortcut: capped at 5 so a confused count can't spam Back.
+    for (var i = 0; i < 5 && _menuDepth > 0 && !_disposed; i++) {
+      await send(RemoteAction.back);
+    }
+    if (!_disposed) _menuDepth = 0;
+  }
+
   Future<void> send(RemoteAction action) async {
-    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+    if (_disposed) return;
+    if (!_readyForKeys(
+      pairingMessage: 'Enter the code shown on the TV first.',
+    )) {
       return;
     }
+    _menuDepth = switch (action) {
+      RemoteAction.menu => _menuDepth + 1,
+      RemoteAction.back => _menuDepth > 0 ? _menuDepth - 1 : 0,
+      RemoteAction.home => 0,
+      _ => _menuDepth,
+    };
     final result = await session.send(action);
     _logFailure('send ${action.name}', result);
     if (result.detail != null) {
@@ -204,9 +228,12 @@ class RemoteController extends ChangeNotifier {
 
   /// Tries an alternate Menu key without saving it yet.
   Future<void> sendMenuProbe(String commandId) async {
-    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+    if (!_readyForKeys(
+      pairingMessage: 'Enter the code shown on the TV first.',
+    )) {
       return;
     }
+    _menuDepth += 1;
     final result = await session.sendMenuProbe(commandId);
     _logFailure('menu probe', result);
     if (result.detail != null) {
@@ -284,6 +311,7 @@ class RemoteController extends ChangeNotifier {
       _notify();
       return;
     }
+    _menuDepth = 0; // an opened app, not a menu, is on screen
     final result = await session.launch(shortcut);
     _logFailure('launch app', result);
     if (result.detail != null) {
@@ -292,18 +320,27 @@ class RemoteController extends ChangeNotifier {
     }
   }
 
-  Future<void> sendText(String text) async {
-    if (!_readyForText) return;
-    final result = await session.sendText(text);
-    if (result.detail != null) {
-      detail = result.detail;
-      _notify();
+  /// True only when the TV confirmed the text landed.
+  /// Why the last typed text did not land; shown in the keyboard sheet only,
+  /// not the pad's status bar, so the pad does not shift while swiping.
+  String? textDetail;
+
+  Future<bool> sendText(String text) async {
+    textDetail = null;
+    if (!_readyForText) {
+      textDetail = detail;
+      return false;
     }
+    final result = await _inOrder(() => session.sendText(text));
+    textDetail = result.detail;
+    // Only the text-free Android TV diagnostic; other details may echo the text.
+    if (result.unconfirmed) feedbackLog.add('typing unconfirmed: ${result.detail}');
+    return result.ok && !result.unconfirmed;
   }
 
   Future<void> textBackspace() async {
     if (!_readyForText) return;
-    final result = await session.textBackspace();
+    final result = await _inOrder(() => session.textBackspace());
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -312,11 +349,21 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> textEnter() async {
     if (!_readyForText) return;
-    final result = await session.textEnter();
+    final result = await _inOrder(() => session.textEnter());
     if (result.detail != null) {
       detail = result.detail;
       _notify();
     }
+  }
+
+  /// Text edits run one at a time, in order: an overlapping send could make a
+  /// TV apply the same text twice or build on a stale field value.
+  Future<void> _textQueue = Future<void>.value();
+
+  Future<CommandResult> _inOrder(Future<CommandResult> Function() edit) {
+    final run = _textQueue.then((_) => edit());
+    _textQueue = run.then((_) {}, onError: (_) {});
+    return run;
   }
 
   bool get _readyForText {

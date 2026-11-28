@@ -73,6 +73,7 @@ class SamsungSession extends RemoteSession {
     }
 
     _channel = channel;
+    _imeActive = false;
     final ready = Completer<void>();
     _subscription = channel.stream.listen(
       (data) {
@@ -128,6 +129,10 @@ class SamsungSession extends RemoteSession {
     }
     if (decoded is! Map) return null;
     final event = decoded['event']?.toString() ?? '';
+    if (event.contains('imeStart')) _imeActive = true;
+    if (event.contains('imeEnd') || event.contains('imeDone')) {
+      _imeActive = false;
+    }
     final body = decoded['data'];
     if (body is Map && body['token'] is String) {
       final token = body['token'] as String;
@@ -145,6 +150,8 @@ class SamsungSession extends RemoteSession {
     }
     return null;
   }
+
+  var _imeActive = false;
 
   @override
   bool get supportsMenuProbes => true;
@@ -187,14 +194,40 @@ class SamsungSession extends RemoteSession {
     }
   }
 
+  Future<void> _textLock = Future<void>.value();
+
   @override
-  Future<CommandResult> sendText(String text) async {
+  Future<CommandResult> sendText(String text) {
+    // Serialize so two calls can't interleave their per-key presses.
+    final run = _textLock.then((_) => _sendText(text));
+    _textLock = run.then((_) {}, onError: (_) {});
+    return run;
+  }
+
+  Future<CommandResult> _sendText(String text) async {
     final channel = _channel;
     if (channel == null) {
       return const CommandResult(false, 'The TV is not connected.');
     }
     if (text.isEmpty) {
       return const CommandResult(false, 'Nothing to type.');
+    }
+    // No IME session (e.g. YouTube search): SendInputString is dropped, so
+    // press one key per character when every character has a key. KEY_A..Z
+    // can't express case, so text with capitals keeps the old path.
+    final keys = [
+      for (final r in text.runes) samsungCharKey(String.fromCharCode(r)),
+    ];
+    if (!_imeActive && !keys.contains(null) && text == text.toLowerCase()) {
+      try {
+        for (final key in keys) {
+          channel.sink.add(jsonEncode(samsungKeyPayload(key!)));
+          await Future<void>.delayed(const Duration(milliseconds: 60));
+        }
+        return const CommandResult(true);
+      } catch (_) {
+        return const CommandResult(false, 'The text did not reach the TV.');
+      }
     }
     try {
       channel.sink.add(jsonEncode(samsungTextPayload(text)));

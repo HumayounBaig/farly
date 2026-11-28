@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:farly/control/remote_session.dart';
@@ -67,6 +68,78 @@ void main() {
     );
     controller.dispose();
     await pending;
+  });
+
+  test('text edits run one at a time, in order', () async {
+    final session = _SlowTextSession();
+    final controller = RemoteController(
+      device: _tv,
+      onCredentials: (_) {},
+      sessions: (device, sink) => session,
+    );
+    await controller.connect();
+    await Future<void>.delayed(Duration.zero);
+    final first = controller.sendText('ab');
+    final second = controller.sendText('cd');
+    await Future<void>.delayed(Duration.zero);
+    expect(session.log, ['start ab']); // second waits for the first
+    session.gates.first.complete();
+    await first;
+    await Future<void>.delayed(Duration.zero);
+    session.gates.last.complete();
+    await second;
+    expect(session.log, ['start ab', 'end ab', 'start cd', 'end cd']);
+    controller.dispose();
+  });
+
+  test('auto back closes only the TV menus left open', () async {
+    Future<List<RemoteAction>> run(
+      List<RemoteAction> presses, [
+      Future<void> Function(RemoteController c)? then,
+    ]) async {
+      final session = _RecordingSession();
+      final controller = RemoteController(
+        device: _tv,
+        onCredentials: (_) {},
+        sessions: (device, sink) => session,
+      );
+      await controller.connect();
+      await Future<void>.delayed(Duration.zero);
+      for (final a in presses) {
+        await controller.send(a);
+      }
+      await then?.call(controller);
+      session.sent.clear();
+      await controller.sendAutoBack();
+      await controller.sendAutoBack();
+      controller.dispose();
+      return session.sent;
+    }
+
+    const back = RemoteAction.back;
+    expect(await run([RemoteAction.menu]), [back]);
+    expect(await run([RemoteAction.menu, back]), isEmpty);
+    // Changing settings inside the menu keeps it open.
+    expect(
+      await run([RemoteAction.menu, RemoteAction.down, RemoteAction.select]),
+      [back],
+    );
+    // Stack: two menus opened, one closed by the user, one left for us.
+    expect(
+      await run([RemoteAction.menu, RemoteAction.menu, back]),
+      [back],
+    );
+    expect(await run([RemoteAction.menu, RemoteAction.menu]), [back, back]);
+    expect(await run([RemoteAction.menu, RemoteAction.home]), isEmpty);
+    expect(await run([back, RemoteAction.menu, back, back]), isEmpty);
+    expect(await run([RemoteAction.play]), isEmpty);
+    expect(await run([]), isEmpty);
+    expect(
+      await run([RemoteAction.menu], (c) => c.launch(
+        AppShortcut.plain('YouTube', 'https://www.youtube.com'),
+      )),
+      isEmpty,
+    );
   });
 
   test('updateDevice replaces a row that only shares host history', () async {
@@ -178,6 +251,47 @@ void main() {
       controller.dispose();
     },
   );
+}
+
+class _RecordingSession extends RemoteSession {
+  final sent = <RemoteAction>[];
+  final _updates = SessionUpdates();
+
+  @override
+  Stream<SessionUpdate> get updates => _updates.stream;
+
+  @override
+  Future<void> open() async => _updates.add(
+    const SessionUpdate(SessionPhase.ready, detail: 'Connected'),
+  );
+
+  @override
+  Future<CommandResult> send(RemoteAction action) async {
+    sent.add(action);
+    return const CommandResult(true);
+  }
+
+  @override
+  Future<void> close() => _updates.close();
+}
+
+/// Holds each text edit open until the test releases it.
+class _SlowTextSession extends _RecordingSession {
+  final log = <String>[];
+  final gates = <Completer<void>>[];
+
+  @override
+  bool get supportsText => true;
+
+  @override
+  Future<CommandResult> sendText(String text) async {
+    log.add('start $text');
+    final gate = Completer<void>();
+    gates.add(gate);
+    await gate.future;
+    log.add('end $text');
+    return const CommandResult(true);
+  }
 }
 
 class _HostAwareSession extends RemoteSession {
