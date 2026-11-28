@@ -4,6 +4,7 @@ import '../models/farly_device.dart';
 import '../models/menu_command.dart';
 import '../theme/farly_colors.dart';
 import '../theme/farly_surfaces.dart';
+import 'farly_list.dart';
 import 'keys.dart';
 
 Future<String?> showMenuProbeSheet({
@@ -59,12 +60,30 @@ class _MenuProbeSheetState extends State<_MenuProbeSheet> {
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.72,
       ),
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-      decoration: FarlySurfaces.glass(radius: 28),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF243731), FarlyColors.night],
+        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        border: Border(top: BorderSide(color: FarlyColors.edge)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: FarlyColors.mist.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -90,65 +109,39 @@ class _MenuProbeSheetState extends State<_MenuProbeSheet> {
           ),
           const SizedBox(height: 14),
           Expanded(
-            child: ListView.separated(
-              itemCount: commands.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final command = commands[index];
-                final selected = command.id == _active;
-                final busy = _busyId == command.id;
-                return Container(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? FarlyColors.horizon.withValues(alpha: 0.14)
-                        : const Color(0x14FFFFFF),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: selected
-                          ? FarlyColors.horizon.withValues(alpha: 0.55)
-                          : FarlyColors.edge,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+            child: ListView(
+              children: [
+                FarlyListGroup(
+                  inset: 16,
+                  children: [
+                    for (final command in commands)
+                      FarlyListRow(
+                        title: command.label,
+                        detail: command.note,
+                        padding: const EdgeInsets.only(left: 16, right: 10),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              command.label,
-                              style: const TextStyle(
-                                color: FarlyColors.bone,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
+                            const SizedBox(width: 8),
+                            _Chip(
+                              label: _busyId == command.id ? '…' : 'Try',
+                              onPressed: _busyId != null
+                                  ? null
+                                  : () => _try(command),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              command.note,
-                              style: Theme.of(context).textTheme.bodySmall,
+                            const SizedBox(width: 6),
+                            _Chip(
+                              label: command.id == _active ? 'Using' : 'Use',
+                              filled: true,
+                              onPressed: () =>
+                                  Navigator.of(context).pop(command.id),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      _Chip(
-                        label: busy ? '…' : 'Try',
-                        onPressed: busy || _busyId != null
-                            ? null
-                            : () => _try(command),
-                      ),
-                      const SizedBox(width: 6),
-                      _Chip(
-                        label: selected ? 'Using' : 'Use',
-                        filled: true,
-                        onPressed: () => Navigator.of(context).pop(command.id),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -158,7 +151,11 @@ class _MenuProbeSheetState extends State<_MenuProbeSheet> {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.onPressed, this.filled = false});
+  const _Chip({
+    required this.label,
+    required this.onPressed,
+    this.filled = false,
+  });
 
   final String label;
   final VoidCallback? onPressed;

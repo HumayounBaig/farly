@@ -21,17 +21,23 @@ class _ScanOrbState extends State<ScanOrb> with SingleTickerProviderStateMixin {
   );
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.scanning) _controller.repeat();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
   }
 
   @override
   void didUpdateWidget(ScanOrb oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.scanning && !_controller.isAnimating) {
+    _sync();
+  }
+
+  /// Rings pulse only while scanning, and hold still when motion is reduced.
+  void _sync() {
+    final animate = widget.scanning && !MediaQuery.disableAnimationsOf(context);
+    if (animate && !_controller.isAnimating) {
       _controller.repeat();
-    } else if (!widget.scanning && _controller.isAnimating) {
+    } else if (!animate && _controller.isAnimating) {
       _controller
         ..stop()
         ..value = 0;

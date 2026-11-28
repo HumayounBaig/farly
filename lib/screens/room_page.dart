@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../models/farly_device.dart';
 import '../state/remote_controller.dart';
@@ -19,8 +20,9 @@ import '../widgets/farly_press.dart';
 import '../widgets/keys.dart';
 import '../widgets/scan_orb.dart';
 import '../widgets/edit_device_sheet.dart';
+import '../widgets/farly_list.dart';
 import '../widgets/share_devices_sheet.dart';
-import '../widgets/tv_maker_badge.dart';
+import 'feedback_page.dart';
 import 'open_device.dart';
 
 class RoomPage extends StatefulWidget {
@@ -115,6 +117,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           Navigator.pop(context);
           unawaited(showShareDevicesSheet(context, room));
         },
+        onFeedback: () {
+          Navigator.pop(context);
+          unawaited(
+            Navigator.push<void>(
+              context,
+              MaterialPageRoute(builder: (_) => const FeedbackPage()),
+            ),
+          );
+        },
       ),
       body: FarlyBackdrop(
         child: SafeArea(
@@ -129,9 +140,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                     children: [
                       _Header(
                         count: onNetwork.length,
-                        networkLabel: room.network?.label,
-                        savedCount: room.devices.length,
-                        elsewhereCount: room.devicesElsewhere.length,
+                        networkLabel: room.network == null
+                            ? null
+                            : (room.network!.ssidKey == null
+                                  ? 'This Wi‑Fi'
+                                  : room.network!.label),
                         onOpenSaved: () =>
                             _scaffoldKey.currentState?.openDrawer(),
                       ),
@@ -139,14 +152,26 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                         child: BottomAligned(
                           padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
                           children: [
+                            // Subtle progress line while a scan runs; the orb's rings alone are easy to miss.
+                            if (room.scanning &&
+                                !MediaQuery.disableAnimationsOf(context))
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(2),
+                                  child: const LinearProgressIndicator(
+                                    key: Key('scan-progress'),
+                                    minHeight: 2,
+                                    color: FarlyColors.horizon,
+                                    backgroundColor: Colors.transparent,
+                                  ),
+                                ),
+                              ),
                             if (onNetwork.isEmpty)
                               room.devices.isEmpty
                                   ? const _EmptyHorizon()
                                   : _EmptyOnNetwork(
                                       savedCount: room.devices.length,
-                                      onOpenSaved: () => _scaffoldKey
-                                          .currentState
-                                          ?.openDrawer(),
                                     )
                             else
                               ..._deviceSection(context, onNetwork),
@@ -155,8 +180,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                               _AllSavedButton(
                                 total: room.devices.length,
                                 elsewhere: room.devicesElsewhere.length,
-                                onPressed: () => _scaffoldKey.currentState
-                                    ?.openDrawer(),
+                                onPressed: () =>
+                                    _scaffoldKey.currentState?.openDrawer(),
                               ),
                             ],
                             if (room.notice != null) ...[
@@ -190,44 +215,54 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     );
   }
 
-  List<Widget> _deviceSection(
-    BuildContext context,
-    List<FarlyDevice> devices,
-  ) {
+  List<Widget> _deviceSection(BuildContext context, List<FarlyDevice> devices) {
     return [
       Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 12),
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
         child: Text(
-          'ON THIS WI-FI',
+          'On this Wi‑Fi',
           style: Theme.of(context).textTheme.labelMedium,
         ),
       ),
-      for (final device in devices) ...[
-        _DeviceCard(
-          device: device,
-          answered:
-              device.lastSeen != null && device.lastSeen == room.lastScanAt,
-          onOpen: () => openDevice(
-            context,
-            device,
-            room: room,
-            sessions: sessions,
-            shortcuts: shortcuts,
-            layout: layout,
-          ),
-          onEdit: () => _editDevice(context, device),
-          onLongPress: () => _deviceActions(context, device),
-        ),
-        const SizedBox(height: 10),
-      ],
+      FarlyListGroup(
+        children: [
+          for (final device in _sorted(devices))
+            _DeviceCard(
+              device: device,
+              lastUsed: device.id == room.lastConnectedId,
+              onOpen: () => openDevice(
+                context,
+                device,
+                room: room,
+                sessions: sessions,
+                shortcuts: shortcuts,
+                layout: layout,
+              ),
+              onEdit: () => _editDevice(context, device),
+              onLongPress: () => _deviceActions(context, device),
+            ),
+        ],
+      ),
       Padding(
-        padding: const EdgeInsets.only(left: 4, top: 2),
+        padding: const EdgeInsets.only(left: 4, top: 8),
         child: Text(
           'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
     ];
+  }
+
+  /// Last used first, then paired TVs, then by brand. Wi-Fi cannot tell which
+  /// TV is physically nearest, so nothing here pretends to.
+  List<FarlyDevice> _sorted(List<FarlyDevice> devices) {
+    int weight(FarlyDevice d) => d.id == room.lastConnectedId
+        ? 0
+        : (d.token != null || d.clientKey != null ? 1 : 2);
+    return [...devices]..sort((a, b) {
+      final byWeight = weight(a).compareTo(weight(b));
+      return byWeight != 0 ? byWeight : a.brand.rank.compareTo(b.brand.rank);
+    });
   }
 
   Future<void> _editDevice(BuildContext context, FarlyDevice device) async {
@@ -289,19 +324,14 @@ class _Header extends StatelessWidget {
     required this.count,
     required this.onOpenSaved,
     this.networkLabel,
-    this.savedCount = 0,
-    this.elsewhereCount = 0,
   });
 
   final int count;
   final String? networkLabel;
-  final int savedCount;
-  final int elsewhereCount;
   final VoidCallback onOpenSaved;
 
   @override
   Widget build(BuildContext context) {
-    final badgeCount = elsewhereCount > 0 ? elsewhereCount : savedCount;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 20, 4),
       child: Row(
@@ -309,11 +339,7 @@ class _Header extends StatelessWidget {
           IconButton(
             tooltip: 'All saved devices',
             onPressed: onOpenSaved,
-            icon: Badge(
-              isLabelVisible: savedCount > 0,
-              label: Text('$badgeCount'),
-              child: const Icon(Icons.menu_rounded),
-            ),
+            icon: const Icon(Icons.menu_rounded),
           ),
           const FarlyMark(size: 36),
           const SizedBox(width: 12),
@@ -362,46 +388,30 @@ class _AllSavedButton extends StatelessWidget {
         : elsewhere == 1
         ? '$total saved · 1 on another Wi‑Fi'
         : '$total saved · $elsewhere on other Wi‑Fi';
-    return Pressable(
-      label: 'All saved devices',
-      onPressed: onPressed,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: FarlySurfaces.glass(radius: 20),
-        child: Row(
-          children: [
-            const Icon(Icons.folder_open_rounded, color: FarlyColors.horizon),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'All saved devices',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(detail, style: Theme.of(context).textTheme.bodySmall),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
-          ],
+    return FarlyListGroup(
+      children: [
+        FarlyListRow(
+          leading: const Icon(
+            Icons.folder_open_rounded,
+            color: FarlyColors.horizon,
+          ),
+          title: 'Saved TVs',
+          detail: detail,
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: FarlyColors.mist,
+          ),
+          onTap: onPressed,
         ),
-      ),
+      ],
     );
   }
 }
 
 class _EmptyOnNetwork extends StatelessWidget {
-  const _EmptyOnNetwork({
-    required this.savedCount,
-    required this.onOpenSaved,
-  });
+  const _EmptyOnNetwork({required this.savedCount});
 
   final int savedCount;
-  final VoidCallback onOpenSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -419,12 +429,6 @@ class _EmptyOnNetwork extends StatelessWidget {
               : '$savedCount saved devices are on another network. Open the sidebar to delete or open them anyway.',
           style: Theme.of(context).textTheme.bodyMedium,
         ),
-        const SizedBox(height: 14),
-        FarlyPress(
-          label: 'All saved devices',
-          icon: Icons.folder_open_rounded,
-          onPressed: onOpenSaved,
-        ),
       ],
     );
   }
@@ -437,6 +441,7 @@ class _SavedDevicesDrawer extends StatelessWidget {
     required this.onEdit,
     required this.onForget,
     required this.onShareWithMac,
+    required this.onFeedback,
   });
 
   final RoomModel room;
@@ -444,6 +449,7 @@ class _SavedDevicesDrawer extends StatelessWidget {
   final ValueChanged<FarlyDevice> onEdit;
   final ValueChanged<FarlyDevice> onForget;
   final VoidCallback onShareWithMac;
+  final VoidCallback onFeedback;
 
   @override
   Widget build(BuildContext context) {
@@ -456,13 +462,33 @@ class _SavedDevicesDrawer extends StatelessWidget {
             final here = room.devicesOnNetwork;
             final elsewhere = room.devicesElsewhere;
             final total = room.devices.length;
+            final network = room.network;
+            // A bare subnet ("192.168.0.x") means no Wi-Fi name is known.
+            final wifi = network == null
+                ? null
+                : (network.ssidKey == null ? 'This Wi‑Fi' : network.label);
+            Widget group(List<FarlyDevice> devices, bool onNetwork) {
+              return FarlyListGroup(
+                children: [
+                  for (final device in devices)
+                    _DrawerDeviceTile(
+                      device: device,
+                      onNetwork: onNetwork,
+                      onOpen: () => onOpen(device),
+                      onEdit: () => onEdit(device),
+                      onForget: () => onForget(device),
+                    ),
+                ],
+              );
+            }
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
                   child: Text(
-                    'All saved devices',
+                    'Saved TVs',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
@@ -471,11 +497,7 @@ class _SavedDevicesDrawer extends StatelessWidget {
                   child: Text(
                     total == 0
                         ? 'Nothing saved yet'
-                        : room.network?.label == null
-                        ? (total == 1 ? '1 device' : '$total devices')
-                        : (total == 1
-                              ? '1 device · ${room.network!.label}'
-                              : '$total devices · ${room.network!.label}'),
+                        : [?wifi, '${here.length} here'].join(' · '),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -489,45 +511,46 @@ class _SavedDevicesDrawer extends StatelessWidget {
                           ),
                         )
                       : ListView(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                           children: [
                             if (here.isNotEmpty) ...[
                               _DrawerSectionLabel('On this Wi‑Fi'),
-                              for (final device in here)
-                                _DrawerDeviceTile(
-                                  device: device,
-                                  onNetwork: true,
-                                  onOpen: () => onOpen(device),
-                                  onEdit: () => onEdit(device),
-                                  onForget: () => onForget(device),
-                                ),
+                              group(here, true),
                             ],
                             if (elsewhere.isNotEmpty) ...[
                               _DrawerSectionLabel('Other Wi‑Fi'),
-                              for (final device in elsewhere)
-                                _DrawerDeviceTile(
-                                  device: device,
-                                  onNetwork: false,
-                                  onOpen: () => onOpen(device),
-                                  onEdit: () => onEdit(device),
-                                  onForget: () => onForget(device),
-                                ),
+                              group(elsewhere, false),
                             ],
                           ],
                         ),
                 ),
-                if (!kIsWeb &&
-                    (defaultTargetPlatform == TargetPlatform.iOS ||
-                        defaultTargetPlatform == TargetPlatform.android))
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: FarlyPress(
-                      label: 'Share with Mac',
-                      icon: Icons.laptop_mac_rounded,
-                      expand: true,
-                      onPressed: total == 0 ? null : onShareWithMac,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: FarlyListGroup(
+                    children: [
+                      if (!kIsWeb &&
+                          (defaultTargetPlatform == TargetPlatform.iOS ||
+                              defaultTargetPlatform == TargetPlatform.android))
+                        FarlyListRow(
+                          leading: const Icon(
+                            Icons.laptop_mac_rounded,
+                            color: FarlyColors.mist,
+                          ),
+                          title: 'Share with Mac',
+                          muted: total == 0,
+                          onTap: total == 0 ? null : onShareWithMac,
+                        ),
+                      FarlyListRow(
+                        leading: const Icon(
+                          Icons.feedback_outlined,
+                          color: FarlyColors.mist,
+                        ),
+                        title: 'Send feedback',
+                        onTap: onFeedback,
+                      ),
+                    ],
                   ),
+                ),
               ],
             );
           },
@@ -545,7 +568,7 @@ class _DrawerSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+      padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
       child: Text(text, style: Theme.of(context).textTheme.labelMedium),
     );
   }
@@ -575,40 +598,53 @@ class _DrawerDeviceTile extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onForget;
 
+  Future<void> _actions(BuildContext context) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _DeviceActionsSheet(name: device.name),
+    );
+    if (action == 'edit') onEdit();
+    if (action == 'forget') onForget();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        decoration: FarlySurfaces.glass(),
-        child: ListTile(
+    return Semantics(
+      customSemanticsActions: {
+        const CustomSemanticsAction(label: 'Edit'): onEdit,
+        const CustomSemanticsAction(label: 'Delete'): onForget,
+      },
+      child: Dismissible(
+        key: ValueKey(device.id),
+        direction: DismissDirection.endToStart,
+        // Never actually dismissed: the swipe hands off to the delete confirm.
+        confirmDismiss: (_) async {
+          onForget();
+          return false;
+        },
+        background: Container(
+          color: FarlyColors.clay.withValues(alpha: 0.25),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          child: const Icon(
+            Icons.delete_outline_rounded,
+            color: FarlyColors.bone,
+          ),
+        ),
+        child: FarlyListRow(
           leading: Opacity(
             opacity: onNetwork ? 1 : 0.55,
-            child: DeviceGlyph(device: device),
+            child: DeviceGlyph(device: device, size: 36),
           ),
-          title: Text(
-            device.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            onNetwork
-                ? device.brand.label
-                : _elsewhereSubtitle(device),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          title: device.name,
+          detail: onNetwork ? device.brand.label : _elsewhereSubtitle(device),
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: FarlyColors.mist,
           ),
           onTap: onOpen,
-          trailing: PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'edit') onEdit();
-              if (value == 'forget') onForget();
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'edit', child: Text('Edit')),
-              PopupMenuItem(value: 'forget', child: Text('Delete')),
-            ],
-          ),
+          onLongPress: () => _actions(context),
         ),
       ),
     );
@@ -662,27 +698,19 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: FarlyColors.horizon.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: FarlyColors.horizon.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.info_outline_rounded,
-            size: 18,
-            color: FarlyColors.horizon,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(text, style: Theme.of(context).textTheme.bodySmall),
-          ),
-        ],
-      ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.info_outline_rounded,
+          size: 18,
+          color: FarlyColors.horizon,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+        ),
+      ],
     );
   }
 }
@@ -724,18 +752,26 @@ class _DeviceActionsSheet extends StatelessWidget {
             const SizedBox(height: 16),
             Text(name, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 14),
-            FarlyPress(
-              label: 'Rename or change icon',
-              icon: Icons.edit_rounded,
-              expand: true,
-              onPressed: () => Navigator.pop(context, 'edit'),
-            ),
-            const SizedBox(height: 10),
-            FarlyPress(
-              label: 'Delete',
-              icon: Icons.delete_outline_rounded,
-              expand: true,
-              onPressed: () => Navigator.pop(context, 'forget'),
+            FarlyListGroup(
+              inset: 52,
+              children: [
+                FarlyListRow(
+                  leading: const Icon(
+                    Icons.edit_rounded,
+                    color: FarlyColors.mist,
+                  ),
+                  title: 'Rename or change icon',
+                  onTap: () => Navigator.pop(context, 'edit'),
+                ),
+                FarlyListRow(
+                  leading: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: FarlyColors.mist,
+                  ),
+                  title: 'Delete',
+                  onTap: () => Navigator.pop(context, 'forget'),
+                ),
+              ],
             ),
           ],
         ),
@@ -747,61 +783,33 @@ class _DeviceActionsSheet extends StatelessWidget {
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.device,
-    required this.answered,
+    required this.lastUsed,
     required this.onOpen,
     required this.onEdit,
     required this.onLongPress,
   });
 
   final FarlyDevice device;
-  final bool answered;
+  final bool lastUsed;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    final ready = device.brand.commandsReady;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-      decoration: FarlySurfaces.glass(),
-      child: Row(
+    return FarlyListRow(
+      leading: DeviceGlyph(device: device, size: 36),
+      title: device.name,
+      detail: [
+        device.brand.label,
+        if (lastUsed) 'Last used',
+        if (device.token != null || device.clientKey != null) 'Paired before',
+        if (kDebugMode && device.host != null) device.host!,
+      ].join(' · '),
+      padding: const EdgeInsets.only(left: 16, right: 8),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Pressable(
-              onPressed: onOpen,
-              onLongPress: onLongPress,
-              child: Row(
-                children: [
-                  DeviceGlyph(device: device),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          device.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          [
-                            device.brand.label,
-                            if (kDebugMode && device.host != null) device.host!,
-                          ].join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
           Pressable(
             onPressed: onEdit,
             label: 'Edit ${device.name}',
@@ -814,16 +822,11 @@ class _DeviceCard extends StatelessWidget {
               ),
             ),
           ),
-          TvMakerBadge(device: device),
-          const SizedBox(width: 6),
-          FarlyPill(
-            label: ready ? 'Ready' : 'Seen',
-            color: ready ? FarlyColors.horizon : FarlyColors.mist,
-            dot: answered,
-          ),
           const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
         ],
       ),
+      onTap: onOpen,
+      onLongPress: onLongPress,
     );
   }
 }

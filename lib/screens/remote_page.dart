@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import '../control/remote_session.dart';
@@ -14,13 +15,14 @@ import '../storage/layout_store.dart';
 import '../storage/shortcut_store.dart';
 import '../theme/farly_colors.dart';
 import '../theme/farly_surfaces.dart';
+import '../widgets/arrange_row.dart';
+import '../widgets/farly_list.dart';
 import '../widgets/bottom_aligned.dart';
 import '../widgets/device_glyph.dart';
 import '../widgets/edit_shortcut_sheet.dart';
 import '../widgets/farly_backdrop.dart';
 import '../widgets/farly_press.dart';
 import '../widgets/horizon_pad.dart';
-import '../widgets/jiggle.dart';
 import '../widgets/keys.dart';
 import '../widgets/menu_probe_sheet.dart';
 import '../widgets/phone_volume_bridge.dart';
@@ -61,7 +63,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   List<ShortcutSlot> _slots = ShortcutSlot.defaults;
   RemoteLayout _layout = RemoteLayout.defaults;
   var _editing = false;
-  var _dragging = false;
   var _resumeRetrying = false;
   late final PhoneVolumeBridge _phoneVolume = PhoneVolumeBridge(
     onAction: (action) {
@@ -128,11 +129,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     _remote.removeListener(_rememberWhenReady);
     final remote = _remote;
     // Press TV Back once on leaving the pad; close the session only after it goes out.
-    unawaited(remote
-        .send(RemoteAction.back)
-        .timeout(const Duration(seconds: 2))
-        .catchError((_) {})
-        .whenComplete(remote.dispose));
+    unawaited(
+      remote
+          .send(RemoteAction.back)
+          .timeout(const Duration(seconds: 2))
+          .catchError((_) {})
+          .whenComplete(remote.dispose),
+    );
     super.dispose();
   }
 
@@ -156,11 +159,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() => _layout = layout);
     await _layoutStore.write(layout);
-  }
-
-  void _setDragging(bool value) {
-    if (_dragging == value || !mounted) return;
-    setState(() => _dragging = value);
   }
 
   Future<void> _editShortcut(int index) async {
@@ -192,6 +190,27 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     setState(() => _editing = false);
   }
 
+  Future<void> _confirmReset() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset to default?'),
+        content: const Text('Restores the original layout and app buttons.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _resetAll();
+  }
+
   Future<void> _resetAll() async {
     HapticFeedback.mediumImpact();
     await _shortcutStore.write(ShortcutSlot.defaults);
@@ -213,16 +232,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     _persistLayout(_layout.copyWith(blocks: next));
   }
 
-  void _moveBlock(int index, int delta) {
-    final next = [..._layout.blocks];
-    final newIndex = index + delta;
-    if (newIndex < 0 || newIndex >= next.length) return;
-    final item = next.removeAt(index);
-    next.insert(newIndex, item);
-    HapticFeedback.selectionClick();
-    _persistLayout(_layout.copyWith(blocks: next));
-  }
-
   void _hideBlock(RemoteBlockId id) {
     if (!_layout.blocks.contains(id)) return;
     // Keep at least one block so arrange mode still has something to show.
@@ -230,7 +239,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     HapticFeedback.lightImpact();
     _persistLayout(
       _layout.copyWith(
-        blocks: [for (final block in _layout.blocks) if (block != id) block],
+        blocks: [
+          for (final block in _layout.blocks)
+            if (block != id) block,
+        ],
       ),
     );
   }
@@ -252,7 +264,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void _hideChrome(ChromeId id) {
-    final chrome = [for (final item in _layout.chrome) if (item != id) item];
+    final chrome = [
+      for (final item in _layout.chrome)
+        if (item != id) item,
+    ];
     HapticFeedback.lightImpact();
     _persistLayout(_layout.copyWith(chrome: chrome));
   }
@@ -311,6 +326,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.menu => session.supports(RemoteAction.menu),
       ChromeId.keyboard => session.supportsText,
       ChromeId.input => session.supports(RemoteAction.input),
+      ChromeId.pictureOff =>
+        session.pictureOffSupport != PictureOffSupport.none,
     };
   }
 
@@ -321,6 +338,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.menu => Icons.menu_rounded,
       ChromeId.keyboard => Icons.keyboard_rounded,
       ChromeId.input => Icons.input_rounded,
+      ChromeId.pictureOff =>
+        _remote.pictureIsOff ? Icons.tv_rounded : Icons.tv_off_rounded,
     };
   }
 
@@ -331,6 +350,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.menu => RemoteAction.menu.label,
       ChromeId.keyboard => 'Type on the TV',
       ChromeId.input => RemoteAction.input.label,
+      ChromeId.pictureOff =>
+        _remote.pictureIsOff ? 'Picture on' : 'Picture off',
     };
   }
 
@@ -347,11 +368,319 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         onBackspace: _remote.textBackspace,
       ),
       ChromeId.input => () => _remote.send(RemoteAction.input),
+      ChromeId.pictureOff => _remote.togglePictureOff,
     };
   }
 
+  Widget _arrangeList({
+    required List<AppShortcut> shortcuts,
+    required RemoteSession session,
+    required bool showBrightness,
+  }) {
+    final blocks = _layout.blocks;
+    final hidden = [
+      for (final id in RemoteBlockId.values)
+        if (!blocks.contains(id)) id,
+    ];
+    ArrangeRow row(RemoteBlockId id, {int? index}) {
+      final apps = id == RemoteBlockId.shortcuts;
+      final detail = apps && shortcuts.isEmpty ? 'No apps on this TV' : null;
+      final onTap = switch (id) {
+        RemoteBlockId.shortcuts when shortcuts.isNotEmpty => _editApps,
+        RemoteBlockId.chrome => _editChrome,
+        _ => null,
+      };
+      final isHidden = index == null;
+      return ArrangeRow(
+        key: ValueKey(id),
+        icon: _blockIcon(id),
+        label: _blockLabel(id),
+        detail: detail,
+        index: index,
+        hidden: isHidden,
+        divider: (index ?? 0) > 0,
+        onTap: isHidden ? null : onTap,
+        onToggle: isHidden
+            ? () => _showBlock(id)
+            : (blocks.length > 1 ? () => _hideBlock(id) : null),
+      );
+    }
+
+    final labelStyle = Theme.of(context).textTheme.labelMedium
+        ?.copyWith(color: FarlyColors.mist);
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (constraints.maxHeight >= 600) ...[
+              _arrangePreview(
+                shortcuts: shortcuts,
+                session: session,
+                showBrightness: showBrightness,
+              ),
+              const SizedBox(height: 20),
+            ],
+            FarlyListGroup(
+              inset: ArrangeRow.dividerInset,
+              children: [
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  proxyDecorator: _proxyDecorator,
+                  onReorderItem: _reorderBlocks,
+                  itemCount: blocks.length,
+                  itemBuilder: (context, index) {
+                    final id = blocks[index];
+                    return Semantics(
+                      key: ValueKey('arrange-$id'),
+                      customSemanticsActions: {
+                        if (index > 0)
+                          const CustomSemanticsAction(label: 'Move up'): () =>
+                              _reorderBlocks(index, index - 1),
+                        if (index < blocks.length - 1)
+                          const CustomSemanticsAction(label: 'Move down'): () =>
+                              _reorderBlocks(index, index + 1),
+                      },
+                      child: row(id, index: index),
+                    );
+                  },
+                ),
+              ],
+            ),
+            if (hidden.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+                child: Text('Hidden', style: labelStyle),
+              ),
+              FarlyListGroup(
+                inset: ArrangeRow.dividerInset,
+                children: [for (final id in hidden) row(id)],
+              ),
+            ],
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 20),
+                child: TextButton(
+                  onPressed: _confirmReset,
+                  style: TextButton.styleFrom(
+                    foregroundColor: FarlyColors.mist,
+                  ),
+                  child: const Text('Reset to default'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Static, scaled-down copy of the remote in the current order. Built from
+  /// the real block builders; `_editing` is true here so every control is
+  /// disabled, and IgnorePointer blocks the rest.
+  Widget _arrangePreview({
+    required List<AppShortcut> shortcuts,
+    required RemoteSession session,
+    required bool showBrightness,
+  }) {
+    return IgnorePointer(
+      child: ExcludeSemantics(
+        child: Container(
+          height: 280,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0x0AFFFFFF),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: FarlyColors.edge),
+          ),
+          child: FittedBox(
+            child: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: _normalBlocks(
+                  blocks: _layout.blocks,
+                  session: session,
+                  shortcuts: shortcuts,
+                  showBrightness: showBrightness,
+                  padHeight: 240,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showArrangeSheet({
+    required String title,
+    required Widget Function(StateSetter setSheet) body,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+        ),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF243731), FarlyColors.night],
+          ),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          border: Border(top: BorderSide(color: FarlyColors.edge)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: StatefulBuilder(
+            builder: (context, setSheet) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, bottom: 12),
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  body(setSheet),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editApps() {
+    final brand = _remote.device.brand;
+    return _showArrangeSheet(
+      title: 'Apps',
+      body: (setSheet) => FarlyListGroup(
+        inset: ArrangeRow.dividerInset,
+        children: [
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            proxyDecorator: _proxyDecorator,
+            onReorderItem: (from, to) {
+              _reorderShortcuts(from, to);
+              setSheet(() {});
+            },
+            itemCount: _slots.length,
+            itemBuilder: (context, i) {
+              final app = _slots[i].toShortcut(brand);
+              return ArrangeRow(
+                key: ValueKey('shortcut-${_slots[i].appId}-$i'),
+                divider: i > 0,
+                leading: StreamMark(
+                  mark: app.mark ?? app.label.characters.first,
+                  tint: app.tint ?? FarlyColors.horizon,
+                  size: 28,
+                ),
+                label: app.label,
+                index: i,
+                onTap: () async {
+                  await _editShortcut(i);
+                  if (context.mounted) setSheet(() {});
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editChrome() {
+    final session = _remote.session;
+    return _showArrangeSheet(
+      title: 'Menu keys',
+      body: (setSheet) {
+        final visible = [
+          for (final id in _layout.chrome)
+            if (_chromeAvailable(id, session)) id,
+        ];
+        final hidden = [
+          for (final id in ChromeId.values)
+            if (!_layout.chrome.contains(id) && _chromeAvailable(id, session))
+              id,
+        ];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            FarlyListGroup(
+              inset: ArrangeRow.dividerInset,
+              children: [
+                ReorderableListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  proxyDecorator: _proxyDecorator,
+                  onReorderItem: (from, to) {
+                    _reorderChrome(from, to);
+                    setSheet(() {});
+                  },
+                  itemCount: visible.length,
+                  itemBuilder: (context, i) => ArrangeRow(
+                    key: ValueKey(visible[i]),
+                    divider: i > 0,
+                    icon: _chromeIcon(visible[i]),
+                    label: _chromeLabel(visible[i]),
+                    index: i,
+                    onToggle: () {
+                      _hideChrome(visible[i]);
+                      setSheet(() {});
+                    },
+                  ),
+                ),
+              ],
+            ),
+            if (hidden.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+                child: Text(
+                  'Hidden',
+                  style: Theme.of(context).textTheme.labelMedium
+                      ?.copyWith(color: FarlyColors.mist),
+                ),
+              ),
+              FarlyListGroup(
+                inset: ArrangeRow.dividerInset,
+                children: [
+                  for (final id in hidden)
+                    ArrangeRow(
+                      key: ValueKey(id),
+                      icon: _chromeIcon(id),
+                      label: _chromeLabel(id),
+                      hidden: true,
+                      onToggle: () {
+                        _showChrome(id);
+                        setSheet(() {});
+                      },
+                    ),
+                ],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
   Widget _wrapEdit(Key key, Widget child) {
-    return Jiggle(key: key, active: _editing && !_dragging, child: child);
+    return KeyedSubtree(key: key, child: child);
   }
 
   Widget _proxyDecorator(Widget child, int index, Animation<double> animation) {
@@ -360,10 +689,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       builder: (context, child) {
         final t = Curves.easeInOut.transform(animation.value);
         return Material(
-          elevation: 2 + 6 * t,
-          color: Colors.transparent,
-          shadowColor: Colors.black54,
-          borderRadius: BorderRadius.circular(18),
+          elevation: 2 + 8 * t,
+          color: FarlyColors.raised,
+          shadowColor: Colors.black87,
+          borderRadius: BorderRadius.circular(12),
           child: child,
         );
       },
@@ -465,67 +794,17 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
             label: RemoteAction.power.label,
             size: 52,
             tint: FarlyColors.clay,
-            onPressed: _editing
-                ? null
-                : () => _remote.send(RemoteAction.power),
+            onPressed: _editing ? null : () => _remote.send(RemoteAction.power),
           ),
         ),
       ),
-      RemoteBlockId.shortcuts => (!_editing && shortcuts.isEmpty)
-          ? const SizedBox.shrink()
-          : _wrapEdit(
-              const ValueKey(RemoteBlockId.shortcuts),
-              Column(
-                children: [
-                  if (_editing && shortcuts.isEmpty)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 18,
-                      ),
-                      decoration: FarlySurfaces.glass(radius: 20),
-                      child: Text(
-                        'No app buttons on this TV',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    )
-                  else if (_editing)
-                    // Horizontal so it doesn't fight the parent vertical list.
-                    SizedBox(
-                      height: 64,
-                      child: ReorderableListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        buildDefaultDragHandles: false,
-                        proxyDecorator: _proxyDecorator,
-                        onReorderStart: (_) => _setDragging(true),
-                        onReorderEnd: (_) => _setDragging(false),
-                        onReorderItem: _reorderShortcuts,
-                        itemCount: shortcuts.length,
-                        itemBuilder: (context, index) {
-                          return Padding(
-                            key: ValueKey(
-                              'shortcut-${_slots[index].appId}',
-                            ),
-                            padding: EdgeInsets.only(
-                              right: index == shortcuts.length - 1 ? 0 : 10,
-                            ),
-                            child: SizedBox(
-                              width: 140,
-                              child: ReorderableDragStartListener(
-                                index: index,
-                                child: _ShortcutButton(
-                                  shortcut: shortcuts[index],
-                                  onPressed: () => _editShortcut(index),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    )
-                  else
+      RemoteBlockId.shortcuts =>
+        shortcuts.isEmpty
+            ? const SizedBox.shrink()
+            : _wrapEdit(
+                const ValueKey(RemoteBlockId.shortcuts),
+                Column(
+                  children: [
                     Row(
                       children: [
                         for (var i = 0; i < shortcuts.length; i++) ...[
@@ -540,19 +819,17 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                         ],
                       ],
                     ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _editing
-                        ? 'Tap an app to change it. Drag to reorder.'
-                        : 'Hold an app to change it. Hold the pad to rearrange.',
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    Text(
+                      'Hold an app to change it. Hold the pad to rearrange.',
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
               ),
-            ),
       RemoteBlockId.transport => _wrapEdit(
         const ValueKey(RemoteBlockId.transport),
         KeyRocker(
@@ -571,24 +848,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       RemoteBlockId.chrome => _wrapEdit(
         const ValueKey(RemoteBlockId.chrome),
         _ChromeRow(
-          editing: _editing,
           visible: [
             for (final id in _layout.chrome)
               if (_chromeAvailable(id, session)) id,
           ],
-          hidden: [
-            for (final id in ChromeId.values)
-              if (!_layout.chrome.contains(id) && _chromeAvailable(id, session))
-                id,
-          ],
           iconFor: _chromeIcon,
           labelFor: _chromeLabel,
           actionFor: _chromeAction,
-          onReorder: _reorderChrome,
-          onHide: _hideChrome,
-          onShow: _showChrome,
-          onDragStart: (_) => _setDragging(true),
-          onDragEnd: (_) => _setDragging(false),
+          activeFor: (id) => id == ChromeId.pictureOff && _remote.pictureIsOff,
           menuProbe: session.supportsMenuProbes
               ? () async {
                   final chosen = await showMenuProbeSheet(
@@ -623,20 +890,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       final next = i + 1 < blocks.length ? blocks[i + 1] : null;
       if (id == RemoteBlockId.levels && next == RemoteBlockId.pad) {
         children.add(
-          _padWithRails(
-            showBrightness: showBrightness,
-            padHeight: padHeight,
-          ),
+          _padWithRails(showBrightness: showBrightness, padHeight: padHeight),
         );
         i++;
         continue;
       }
       if (id == RemoteBlockId.pad && next == RemoteBlockId.levels) {
         children.add(
-          _padWithRails(
-            showBrightness: showBrightness,
-            padHeight: padHeight,
-          ),
+          _padWithRails(showBrightness: showBrightness, padHeight: padHeight),
         );
         i++;
         continue;
@@ -691,14 +952,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                 shortcuts.isNotEmpty)
                               id,
                         ];
-                  final hiddenBlocks = [
-                    for (final id in RemoteBlockId.values)
-                      if (!_layout.blocks.contains(id)) id,
-                  ];
                   return Column(
                     children: [
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 220),
                         curve: Curves.easeOut,
                         color: _editing
                             ? FarlyColors.arrangeWash
@@ -733,12 +992,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                       ],
                                       Expanded(
                                         child: Text(
-                                          live.name,
+                                          _editing
+                                              ? 'Arrange remote'
+                                              : live.name,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.titleMedium,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium,
                                         ),
                                       ),
                                     ],
@@ -746,14 +1007,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                   const SizedBox(height: 2),
                                   Text(
                                     _editing
-                                        ? 'Arrange mode'
+                                        ? 'Drag to reorder, eye to hide'
                                         : live.brand.label,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: Theme.of(context).textTheme.bodySmall
                                         ?.copyWith(
                                           color: _editing
-                                              ? FarlyColors.horizon
+                                              ? FarlyColors.mist
                                               : null,
                                         ),
                                   ),
@@ -761,19 +1022,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            if (_editing) ...[
-                              Pressable(
-                                label: 'Reset layout',
-                                onPressed: _resetAll,
-                                child: const Text(
-                                  'Reset',
-                                  style: TextStyle(
-                                    color: FarlyColors.clay,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 14),
+                            if (_editing)
                               Pressable(
                                 label: 'Done arranging',
                                 onPressed: _leaveEdit,
@@ -784,8 +1033,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                              ),
-                            ] else
+                              )
+                            else
                               Pressable(
                                 label: 'Arrange remote',
                                 onPressed: _enterEdit,
@@ -811,237 +1060,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                         ),
                       Expanded(
                         child: _editing
-                            ? CustomScrollView(
-                                slivers: [
-                                  SliverPadding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      20,
-                                      16,
-                                      20,
-                                      0,
-                                    ),
-                                    sliver: SliverToBoxAdapter(
-                                      child: Text(
-                                        'Drag, use arrows, or hide any row.',
-                                        textAlign: TextAlign.center,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.copyWith(
-                                              color: FarlyColors.horizon,
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                  if (hiddenBlocks.isNotEmpty)
-                                    SliverPadding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        20,
-                                        14,
-                                        20,
-                                        0,
-                                      ),
-                                      sliver: SliverToBoxAdapter(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Hidden — tap to show',
-                                              style: Theme.of(
-                                                context,
-                                              ).textTheme.bodySmall,
-                                            ),
-                                            const SizedBox(height: 10),
-                                            Wrap(
-                                              spacing: 10,
-                                              runSpacing: 10,
-                                              children: [
-                                                for (final id in hiddenBlocks)
-                                                  Pressable(
-                                                    label:
-                                                        'Show ${_blockLabel(id)}',
-                                                    onPressed: () =>
-                                                        _showBlock(id),
-                                                    child: Opacity(
-                                                      opacity: 0.7,
-                                                      child: Container(
-                                                        padding:
-                                                            const EdgeInsets
-                                                                .fromLTRB(
-                                                              12,
-                                                              10,
-                                                              14,
-                                                              10,
-                                                            ),
-                                                        decoration:
-                                                            FarlySurfaces.glass(
-                                                              radius: 18,
-                                                            ),
-                                                        child: Row(
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          children: [
-                                                            Icon(
-                                                              _blockIcon(id),
-                                                              size: 18,
-                                                              color: FarlyColors
-                                                                  .bone,
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            Text(
-                                                              _blockLabel(id),
-                                                              style:
-                                                                  const TextStyle(
-                                                                    color:
-                                                                        FarlyColors
-                                                                            .bone,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w600,
-                                                                  ),
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            const Icon(
-                                                              Icons.add_rounded,
-                                                              size: 16,
-                                                              color: FarlyColors
-                                                                  .horizon,
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  const SliverToBoxAdapter(
-                                    child: SizedBox(height: 12),
-                                  ),
-                                  SliverPadding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                    ),
-                                    sliver: SliverReorderableList(
-                                      itemCount: blocks.length,
-                                      proxyDecorator: _proxyDecorator,
-                                      onReorderStart: (_) =>
-                                          _setDragging(true),
-                                      onReorderEnd: (_) =>
-                                          _setDragging(false),
-                                      onReorderItem: _reorderBlocks,
-                                      itemBuilder: (context, index) {
-                                        final id = blocks[index];
-                                        final body = _block(
-                                          id,
-                                          session: session,
-                                          shortcuts: shortcuts,
-                                          showBrightness: showBrightness,
-                                          padHeight: padHeight,
-                                        );
-                                        final canHide = blocks.length > 1;
-                                        return Padding(
-                                          key: ValueKey(id),
-                                          padding: const EdgeInsets.only(
-                                            bottom: 14,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: Text(
-                                                      _blockLabel(id),
-                                                      style: Theme.of(context)
-                                                          .textTheme
-                                                          .labelMedium
-                                                          ?.copyWith(
-                                                            color: FarlyColors
-                                                                .mist,
-                                                          ),
-                                                    ),
-                                                  ),
-                                                  _MoveChip(
-                                                    label:
-                                                        'Move ${_blockLabel(id)} up',
-                                                    icon: Icons
-                                                        .keyboard_arrow_up_rounded,
-                                                    onPressed: index == 0
-                                                        ? null
-                                                        : () => _moveBlock(
-                                                            index,
-                                                            -1,
-                                                          ),
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  _MoveChip(
-                                                    label:
-                                                        'Move ${_blockLabel(id)} down',
-                                                    icon: Icons
-                                                        .keyboard_arrow_down_rounded,
-                                                    onPressed:
-                                                        index >=
-                                                            blocks.length - 1
-                                                        ? null
-                                                        : () => _moveBlock(
-                                                            index,
-                                                            1,
-                                                          ),
-                                                  ),
-                                                  const SizedBox(width: 4),
-                                                  _HideChip(
-                                                    label:
-                                                        'Hide ${_blockLabel(id)}',
-                                                    onPressed: canHide
-                                                        ? () => _hideBlock(id)
-                                                        : null,
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 8),
-                                              Row(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  // Immediate grab — arrows also move without dragging.
-                                                  ReorderableDragStartListener(
-                                                    index: index,
-                                                    child: const Padding(
-                                                      padding: EdgeInsets.only(
-                                                        top: 18,
-                                                        right: 10,
-                                                      ),
-                                                      child: Icon(
-                                                        Icons
-                                                            .drag_handle_rounded,
-                                                        size: 28,
-                                                        color: FarlyColors.mist,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Expanded(child: body),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  const SliverToBoxAdapter(
-                                    child: SizedBox(height: 24),
-                                  ),
-                                ],
+                            ? _arrangeList(
+                                shortcuts: shortcuts,
+                                session: session,
+                                showBrightness: showBrightness,
                               )
                             : BottomAligned(
                                 padding: const EdgeInsets.fromLTRB(
@@ -1058,7 +1080,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                     showBrightness: showBrightness,
                                     padHeight: padHeight,
                                   ),
-                                  if (_remote.phase == SessionPhase.pairing) ...[
+                                  if (_remote.phase ==
+                                      SessionPhase.pairing) ...[
                                     const SizedBox(height: 14),
                                     _PairPanel(
                                       busy: _remote.submitting,
@@ -1101,140 +1124,39 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 
 class _ChromeRow extends StatelessWidget {
   const _ChromeRow({
-    required this.editing,
     required this.visible,
-    required this.hidden,
     required this.iconFor,
     required this.labelFor,
     required this.actionFor,
-    required this.onReorder,
-    required this.onHide,
-    required this.onShow,
-    this.onDragStart,
-    this.onDragEnd,
+    this.activeFor,
     this.menuProbe,
   });
 
-  final bool editing;
   final List<ChromeId> visible;
-  final List<ChromeId> hidden;
   final IconData Function(ChromeId id) iconFor;
   final String Function(ChromeId id) labelFor;
   final VoidCallback? Function(ChromeId id) actionFor;
-  final void Function(int oldIndex, int newIndex) onReorder;
-  final ValueChanged<ChromeId> onHide;
-  final ValueChanged<ChromeId> onShow;
-  final ValueChanged<int>? onDragStart;
-  final ValueChanged<int>? onDragEnd;
+  final bool Function(ChromeId id)? activeFor;
   final VoidCallback? menuProbe;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        if (editing)
-          SizedBox(
-            height: 72,
-            child: ReorderableListView.builder(
-              scrollDirection: Axis.horizontal,
-              buildDefaultDragHandles: false,
-              proxyDecorator: (child, index, animation) {
-                return Material(
-                  color: Colors.transparent,
-                  elevation: 6,
-                  shadowColor: Colors.black54,
-                  borderRadius: BorderRadius.circular(28),
-                  child: child,
-                );
-              },
-              onReorderStart: onDragStart,
-              onReorderEnd: onDragEnd,
-              onReorderItem: onReorder,
-              itemCount: visible.length,
-              itemBuilder: (context, index) {
-                final id = visible[index];
-                return Padding(
-                  key: ValueKey(id),
-                  padding: const EdgeInsets.only(right: 10),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      // Immediate drag — no long-press friction.
-                      ReorderableDragStartListener(
-                        index: index,
-                        child: RoundKey(
-                          icon: iconFor(id),
-                          label: labelFor(id),
-                          onPressed: null,
-                        ),
-                      ),
-                      Positioned(
-                        top: -4,
-                        left: -4,
-                        child: Pressable(
-                          label: 'Hide ${labelFor(id)}',
-                          onPressed: () => onHide(id),
-                          child: Container(
-                            width: 22,
-                            height: 22,
-                            decoration: const BoxDecoration(
-                              color: FarlyColors.clay,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.remove_rounded,
-                              size: 14,
-                              color: FarlyColors.night,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          )
-        else
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              for (final id in visible)
-                RoundKey(
-                  key: ValueKey(id),
-                  icon: iconFor(id),
-                  label: labelFor(id),
-                  onPressed: actionFor(id),
-                ),
-            ],
-          ),
-        if (editing && hidden.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Hidden — tap to show',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final id in hidden)
-                Pressable(
-                  label: 'Show ${labelFor(id)}',
-                  onPressed: () => onShow(id),
-                  child: Opacity(
-                    opacity: 0.55,
-                    child: KeyFace(icon: iconFor(id), size: 52),
-                  ),
-                ),
-            ],
-          ),
-        ],
-        if (!editing && menuProbe != null) ...[
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            for (final id in visible)
+              RoundKey(
+                key: ValueKey(id),
+                icon: iconFor(id),
+                label: labelFor(id),
+                onPressed: actionFor(id),
+                accent: activeFor?.call(id) ?? false,
+              ),
+          ],
+        ),
+        if (menuProbe != null) ...[
           const SizedBox(height: 6),
           Center(
             child: Pressable(
@@ -1282,9 +1204,10 @@ class _PairPanelState extends State<_PairPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return FarlyListGroup(
+      children: [
+        Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: FarlySurfaces.glass(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1349,6 +1272,8 @@ class _PairPanelState extends State<_PairPanel> {
           ),
         ],
       ),
+        ),
+      ],
     );
   }
 }
@@ -1409,86 +1334,8 @@ class _StatusBanner extends StatelessWidget {
       child: Text(
         text,
         softWrap: true,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: FarlyColors.bone,
-          height: 1.35,
-        ),
-      ),
-    );
-  }
-}
-
-class _MoveChip extends StatelessWidget {
-  const _MoveChip({
-    required this.label,
-    required this.icon,
-    required this.onPressed,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    return Pressable(
-      label: label,
-      onPressed: onPressed,
-      dimWhenDisabled: true,
-      child: Container(
-        width: 32,
-        height: 32,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: enabled
-              ? const Color(0x22FFFFFF)
-              : const Color(0x10FFFFFF),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: FarlyColors.edge),
-        ),
-        child: Icon(
-          icon,
-          size: 20,
-          color: enabled ? FarlyColors.bone : FarlyColors.mist,
-        ),
-      ),
-    );
-  }
-}
-
-class _HideChip extends StatelessWidget {
-  const _HideChip({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    return Pressable(
-      label: label,
-      onPressed: onPressed,
-      child: Container(
-        width: 32,
-        height: 32,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: enabled
-              ? FarlyColors.clay.withValues(alpha: 0.22)
-              : const Color(0x10FFFFFF),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: enabled
-                ? FarlyColors.clay.withValues(alpha: 0.45)
-                : FarlyColors.edge,
-          ),
-        ),
-        child: Icon(
-          Icons.visibility_off_rounded,
-          size: 16,
-          color: enabled ? FarlyColors.clay : FarlyColors.mist,
-        ),
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: FarlyColors.bone, height: 1.35),
       ),
     );
   }

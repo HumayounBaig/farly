@@ -6,6 +6,7 @@ import '../control/remote_session.dart';
 import '../control/session_factory.dart';
 import '../models/farly_device.dart';
 import '../models/remote_action.dart';
+import 'feedback_log.dart';
 
 typedef SessionBuilder = RemoteSession Function(
   FarlyDevice device,
@@ -23,7 +24,9 @@ class RemoteController extends ChangeNotifier {
     this.relocate,
   }) : _device = device,
        _onCredentials = onCredentials,
-       session = (sessions ?? buildSession)(device, onCredentials);
+       session = (sessions ?? buildSession)(device, onCredentials) {
+    feedbackLog.brands.add(device.brand.label);
+  }
 
   final RemoteSession session;
   final CredentialSink _onCredentials;
@@ -38,13 +41,22 @@ class RemoteController extends ChangeNotifier {
   var _opening = false;
   var _recoveryUsed = false;
   var _wasReady = false;
+  var _pictureIsOff = false;
+
+  /// True after a direct Picture off (LG) until it is undone or we reconnect.
+  bool get pictureIsOff => _pictureIsOff;
 
   Future<void> connect() async {
     _subscription = session.updates.listen((update) {
       phase = update.phase;
       detail = update.detail;
+      feedbackLog.add(
+        '${_device.brand.label} ${update.phase.name}'
+        '${update.detail == null ? '' : ': ${update.detail}'}',
+      );
       if (update.phase == SessionPhase.ready) {
         _wasReady = true;
+        // Keep _pictureIsOff: the panel stays off across a reconnect.
         _recoveryUsed = false;
       }
       _notify();
@@ -158,10 +170,36 @@ class RemoteController extends ChangeNotifier {
       return;
     }
     final result = await session.send(action);
+    _logFailure('send ${action.name}', result);
     if (result.detail != null) {
       detail = result.detail;
       _notify();
     }
+  }
+
+  var _pictureBusy = false;
+
+  /// Toggles the TV picture (direct TVs) or opens its options menu (Roku TVs).
+  Future<void> togglePictureOff() async {
+    if (_disposed ||
+        session.pictureOffSupport == PictureOffSupport.none ||
+        !_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+      return;
+    }
+    if (_pictureBusy) return; // a second tap would send the same state again
+    final direct = session.pictureOffSupport == PictureOffSupport.direct;
+    final off = direct ? !_pictureIsOff : true;
+    _pictureBusy = true;
+    final CommandResult result;
+    try {
+      result = await session.setPictureOff(off: off);
+    } finally {
+      _pictureBusy = false;
+    }
+    _logFailure('picture off', result);
+    if (result.ok && direct) _pictureIsOff = off;
+    if (result.detail != null) detail = result.detail;
+    _notify();
   }
 
   /// Tries an alternate Menu key without saving it yet.
@@ -170,6 +208,7 @@ class RemoteController extends ChangeNotifier {
       return;
     }
     final result = await session.sendMenuProbe(commandId);
+    _logFailure('menu probe', result);
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -246,6 +285,7 @@ class RemoteController extends ChangeNotifier {
       return;
     }
     final result = await session.launch(shortcut);
+    _logFailure('launch app', result);
     if (result.detail != null) {
       detail = result.detail;
       _notify();
@@ -293,6 +333,11 @@ class RemoteController extends ChangeNotifier {
       return false;
     }
     return true;
+  }
+
+  /// Typed text never reaches the log, so text commands are not logged here.
+  void _logFailure(String what, CommandResult result) {
+    if (!result.ok) feedbackLog.add('$what failed: ${result.detail ?? 'no detail'}');
   }
 
   bool _disposed = false;

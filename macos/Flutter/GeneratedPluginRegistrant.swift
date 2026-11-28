@@ -9,6 +9,7 @@ import bonsoir_darwin
 import flutter_volume_controller
 import network_info_plus
 import shared_preferences_foundation
+import url_launcher_macos
 import volume_button_listener
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
@@ -16,5 +17,6 @@ func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {
   FlutterVolumeControllerPlugin.register(with: registry.registrar(forPlugin: "FlutterVolumeControllerPlugin"))
   NetworkInfoPlusPlugin.register(with: registry.registrar(forPlugin: "NetworkInfoPlusPlugin"))
   SharedPreferencesPlugin.register(with: registry.registrar(forPlugin: "SharedPreferencesPlugin"))
+  UrlLauncherPlugin.register(with: registry.registrar(forPlugin: "UrlLauncherPlugin"))
   VolumeButtonListenerPlugin.register(with: registry.registrar(forPlugin: "VolumeButtonListenerPlugin"))
 }
