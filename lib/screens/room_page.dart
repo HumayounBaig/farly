@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../models/farly_device.dart';
 import '../state/remote_controller.dart';
@@ -19,6 +20,7 @@ import '../widgets/farly_press.dart';
 import '../widgets/keys.dart';
 import '../widgets/scan_orb.dart';
 import '../widgets/edit_device_sheet.dart';
+import '../widgets/farly_list.dart';
 import '../widgets/share_devices_sheet.dart';
 import '../widgets/tv_maker_badge.dart';
 import 'feedback_page.dart';
@@ -178,8 +180,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                               _AllSavedButton(
                                 total: room.devices.length,
                                 elsewhere: room.devicesElsewhere.length,
-                                onPressed: () => _scaffoldKey.currentState
-                                    ?.openDrawer(),
+                                onPressed: () =>
+                                    _scaffoldKey.currentState?.openDrawer(),
                               ),
                             ],
                             if (room.notice != null) ...[
@@ -213,10 +215,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     );
   }
 
-  List<Widget> _deviceSection(
-    BuildContext context,
-    List<FarlyDevice> devices,
-  ) {
+  List<Widget> _deviceSection(BuildContext context, List<FarlyDevice> devices) {
     return [
       Padding(
         padding: const EdgeInsets.only(left: 4, bottom: 12),
@@ -422,10 +421,7 @@ class _AllSavedButton extends StatelessWidget {
 }
 
 class _EmptyOnNetwork extends StatelessWidget {
-  const _EmptyOnNetwork({
-    required this.savedCount,
-    required this.onOpenSaved,
-  });
+  const _EmptyOnNetwork({required this.savedCount, required this.onOpenSaved});
 
   final int savedCount;
   final VoidCallback onOpenSaved;
@@ -485,13 +481,33 @@ class _SavedDevicesDrawer extends StatelessWidget {
             final here = room.devicesOnNetwork;
             final elsewhere = room.devicesElsewhere;
             final total = room.devices.length;
+            final network = room.network;
+            // A bare subnet ("192.168.0.x") means no Wi-Fi name is known.
+            final wifi = network == null
+                ? null
+                : (network.ssidKey == null ? 'This Wi‑Fi' : network.label);
+            Widget group(List<FarlyDevice> devices, bool onNetwork) {
+              return FarlyListGroup(
+                children: [
+                  for (final device in devices)
+                    _DrawerDeviceTile(
+                      device: device,
+                      onNetwork: onNetwork,
+                      onOpen: () => onOpen(device),
+                      onEdit: () => onEdit(device),
+                      onForget: () => onForget(device),
+                    ),
+                ],
+              );
+            }
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
                   child: Text(
-                    'All saved devices',
+                    'Saved TVs',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ),
@@ -500,11 +516,7 @@ class _SavedDevicesDrawer extends StatelessWidget {
                   child: Text(
                     total == 0
                         ? 'Nothing saved yet'
-                        : room.network?.label == null
-                        ? (total == 1 ? '1 device' : '$total devices')
-                        : (total == 1
-                              ? '1 device · ${room.network!.label}'
-                              : '$total devices · ${room.network!.label}'),
+                        : [?wifi, '${here.length} here'].join(' · '),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -518,49 +530,45 @@ class _SavedDevicesDrawer extends StatelessWidget {
                           ),
                         )
                       : ListView(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                           children: [
                             if (here.isNotEmpty) ...[
                               _DrawerSectionLabel('On this Wi‑Fi'),
-                              for (final device in here)
-                                _DrawerDeviceTile(
-                                  device: device,
-                                  onNetwork: true,
-                                  onOpen: () => onOpen(device),
-                                  onEdit: () => onEdit(device),
-                                  onForget: () => onForget(device),
-                                ),
+                              group(here, true),
                             ],
                             if (elsewhere.isNotEmpty) ...[
                               _DrawerSectionLabel('Other Wi‑Fi'),
-                              for (final device in elsewhere)
-                                _DrawerDeviceTile(
-                                  device: device,
-                                  onNetwork: false,
-                                  onOpen: () => onOpen(device),
-                                  onEdit: () => onEdit(device),
-                                  onForget: () => onForget(device),
-                                ),
+                              group(elsewhere, false),
                             ],
                           ],
                         ),
                 ),
-                if (!kIsWeb &&
-                    (defaultTargetPlatform == TargetPlatform.iOS ||
-                        defaultTargetPlatform == TargetPlatform.android))
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: FarlyPress(
-                      label: 'Share with Mac',
-                      icon: Icons.laptop_mac_rounded,
-                      expand: true,
-                      onPressed: total == 0 ? null : onShareWithMac,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: FarlyListGroup(
+                    children: [
+                      if (!kIsWeb &&
+                          (defaultTargetPlatform == TargetPlatform.iOS ||
+                              defaultTargetPlatform == TargetPlatform.android))
+                        FarlyListRow(
+                          leading: const Icon(
+                            Icons.laptop_mac_rounded,
+                            color: FarlyColors.mist,
+                          ),
+                          title: 'Share with Mac',
+                          muted: total == 0,
+                          onTap: total == 0 ? null : onShareWithMac,
+                        ),
+                      FarlyListRow(
+                        leading: const Icon(
+                          Icons.feedback_outlined,
+                          color: FarlyColors.mist,
+                        ),
+                        title: 'Send feedback',
+                        onTap: onFeedback,
+                      ),
+                    ],
                   ),
-                ListTile(
-                  leading: const Icon(Icons.feedback_outlined),
-                  title: const Text('Send feedback'),
-                  onTap: onFeedback,
                 ),
               ],
             );
@@ -579,7 +587,7 @@ class _DrawerSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 8),
+      padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
       child: Text(text, style: Theme.of(context).textTheme.labelMedium),
     );
   }
@@ -609,40 +617,53 @@ class _DrawerDeviceTile extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onForget;
 
+  Future<void> _actions(BuildContext context) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _DeviceActionsSheet(name: device.name),
+    );
+    if (action == 'edit') onEdit();
+    if (action == 'forget') onForget();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Container(
-        decoration: FarlySurfaces.glass(),
-        child: ListTile(
+    return Semantics(
+      customSemanticsActions: {
+        const CustomSemanticsAction(label: 'Edit'): onEdit,
+        const CustomSemanticsAction(label: 'Delete'): onForget,
+      },
+      child: Dismissible(
+        key: ValueKey(device.id),
+        direction: DismissDirection.endToStart,
+        // Never actually dismissed: the swipe hands off to the delete confirm.
+        confirmDismiss: (_) async {
+          onForget();
+          return false;
+        },
+        background: Container(
+          color: FarlyColors.clay.withValues(alpha: 0.25),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 20),
+          child: const Icon(
+            Icons.delete_outline_rounded,
+            color: FarlyColors.bone,
+          ),
+        ),
+        child: FarlyListRow(
           leading: Opacity(
             opacity: onNetwork ? 1 : 0.55,
-            child: DeviceGlyph(device: device),
+            child: DeviceGlyph(device: device, size: 36),
           ),
-          title: Text(
-            device.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            onNetwork
-                ? device.brand.label
-                : _elsewhereSubtitle(device),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          title: device.name,
+          detail: onNetwork ? device.brand.label : _elsewhereSubtitle(device),
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: FarlyColors.mist,
           ),
           onTap: onOpen,
-          trailing: PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'edit') onEdit();
-              if (value == 'forget') onForget();
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'edit', child: Text('Edit')),
-              PopupMenuItem(value: 'forget', child: Text('Delete')),
-            ],
-          ),
+          onLongPress: () => _actions(context),
         ),
       ),
     );
