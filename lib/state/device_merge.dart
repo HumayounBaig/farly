@@ -179,7 +179,23 @@ FarlyDevice _combine(
       newer: found.networkKeys,
       older: saved.networkKeys,
     ),
+    model: found.model ?? saved.model,
   );
+}
+
+/// Ids in [merged] that a scan found and that no [saved] entry matched, so
+/// this is the first time the user sees them.
+Set<String> newlyFoundIds({
+  required List<FarlyDevice> saved,
+  required List<FarlyDevice> merged,
+  required List<FarlyDevice> found,
+}) {
+  return {
+    for (final device in merged)
+      if (found.any((f) => sameDevice(f, device)) &&
+          !saved.any((s) => sameDevice(s, device)))
+        device.id,
+  };
 }
 
 /// Cast and Android TV entries share the Android TV remote pairing.

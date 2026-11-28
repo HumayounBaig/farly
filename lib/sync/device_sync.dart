@@ -144,6 +144,7 @@ FarlyDevice combineImported(FarlyDevice local, FarlyDevice incoming) {
       newer: incoming.networkKeys,
       older: local.networkKeys,
     ),
+    model: incoming.model ?? local.model,
   );
 }
 
