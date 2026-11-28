@@ -226,7 +226,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
+        'Tap the three dots or hold a device to rename it, change its icon, or delete it.',
       ),
       findsOneWidget,
     );
@@ -259,7 +259,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.text(
-        'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
+        'Tap the three dots or hold a device to rename it, change its icon, or delete it.',
       ),
       findsOneWidget,
     );
@@ -394,7 +394,9 @@ void main() {
     expect(find.text('Delete Living room?'), findsOneWidget);
   });
 
-  testWidgets('pencil opens rename sheet and saves the name', (tester) async {
+  testWidgets('three dots open the actions sheet and rename saves', (
+    tester,
+  ) async {
     final store = MemoryDeviceStore([
       const FarlyDevice(
         id: 'roku@192.168.1.20',
@@ -419,9 +421,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.edit_outlined));
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp('More options for Living room')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+    await tester.tap(find.text('Rename or change icon'));
     await tester.pumpAndSettle();
     expect(find.text('Edit device'), findsOneWidget);
+    semantics.dispose();
     await tester.enterText(find.byType(TextField).first, 'Den TV');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();

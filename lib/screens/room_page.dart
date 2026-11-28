@@ -135,7 +135,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
               child: ListenableBuilder(
                 listenable: room,
                 builder: (context, _) {
-                  final onNetwork = room.devicesOnNetwork;
+                  final onNetwork = room.homeDevices;
                   return Column(
                     children: [
                       _Header(
@@ -239,7 +239,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                 shortcuts: shortcuts,
                 layout: layout,
               ),
-              onEdit: () => _editDevice(context, device),
               onLongPress: () => _deviceActions(context, device),
             ),
         ],
@@ -247,10 +246,19 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       Padding(
         padding: const EdgeInsets.only(left: 4, top: 8),
         child: Text(
-          'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
+          'Tap the three dots or hold a device to rename it, change its icon, or delete it.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
+      if (room.focusedId != null &&
+          devices.length < room.devicesOnNetwork.length)
+        Padding(
+          padding: const EdgeInsets.only(left: 4, top: 4),
+          child: Text(
+            'Scan to see other TVs',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
     ];
   }
 
@@ -787,7 +795,6 @@ class _DeviceCard extends StatelessWidget {
     required this.lastUsed,
     this.isNew = false,
     required this.onOpen,
-    required this.onEdit,
     required this.onLongPress,
   });
 
@@ -795,7 +802,6 @@ class _DeviceCard extends StatelessWidget {
   final bool lastUsed;
   final bool isNew;
   final VoidCallback onOpen;
-  final VoidCallback onEdit;
   final VoidCallback onLongPress;
 
   @override
@@ -814,12 +820,12 @@ class _DeviceCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Pressable(
-            onPressed: onEdit,
-            label: 'Edit ${device.name}',
+            onPressed: onLongPress,
+            label: 'More options for ${device.name}',
             child: const Padding(
               padding: EdgeInsets.all(8),
               child: Icon(
-                Icons.edit_outlined,
+                Icons.more_vert_rounded,
                 size: 20,
                 color: FarlyColors.mist,
               ),
