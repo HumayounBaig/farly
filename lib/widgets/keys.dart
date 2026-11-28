@@ -41,6 +41,10 @@ class _PressableState extends State<Pressable> {
       enabled: enabled,
       label: widget.label,
       excludeSemantics: widget.label != null,
+      // excludeSemantics drops the GestureDetector's actions; restore them so
+      // screen readers can activate a labelled key.
+      onTap: enabled ? widget.onPressed : null,
+      onLongPress: widget.onLongPress,
       child: MouseRegion(
         cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
         child: GestureDetector(

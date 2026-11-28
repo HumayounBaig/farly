@@ -37,6 +37,9 @@ class RoomModel extends ChangeNotifier {
   FarlyDevice? _autoOpen;
   var _scannedThisSession = false;
 
+  /// The TV Home is narrowed to after a connect; memory only, cleared by a scan.
+  String? focusedId;
+
   FarlyDevice? get lastConnected {
     final id = lastConnectedId;
     if (id == null) return null;
@@ -48,6 +51,15 @@ class RoomModel extends ChangeNotifier {
     for (final device in devices)
       if (isOnCurrentNetwork(device)) device,
   ];
+
+  /// What Home lists: only the connected TV until the next scan, else all.
+  List<FarlyDevice> get homeDevices {
+    final here = devicesOnNetwork;
+    final id = focusedId;
+    if (id == null) return here;
+    final focused = here.where((device) => device.id == id).toList();
+    return focused.isEmpty ? here : focused;
+  }
 
   /// Saved devices that belong to another network (or nowhere yet).
   List<FarlyDevice> get devicesElsewhere => [
@@ -97,11 +109,13 @@ class RoomModel extends ChangeNotifier {
 
   /// Re-reads Wi-Fi and optionally queues the last remote for this network.
   Future<void> refreshNetwork({bool openLastRemote = false}) async {
+    final before = network?.key;
     try {
       network = await _readNetwork();
     } catch (_) {
       network = null;
     }
+    if (network?.key != before) focusedId = null;
     if (openLastRemote) {
       _autoOpen = _remoteForCurrentNetwork();
     }
@@ -146,6 +160,7 @@ class RoomModel extends ChangeNotifier {
     if (scanning) return;
     scanning = true;
     notice = null;
+    focusedId = null;
     notifyListeners();
     try {
       if (!roomScanSupported) {
@@ -328,13 +343,18 @@ class RoomModel extends ChangeNotifier {
     }
     final stamped = _stampNetwork(device);
     final networkKey = network?.key;
+    final refocus = focusedId != stamped.id;
+    focusedId = stamped.id;
     final needsStamp = stamped.networkKeys.any(
       (item) => !device.networkKeys.contains(item),
     );
     final needsLast = lastConnectedId != stamped.id;
     final needsByNet =
         networkKey != null && lastConnectedByNetwork[networkKey] != stamped.id;
-    if (!needsStamp && !needsLast && !needsByNet) return;
+    if (!needsStamp && !needsLast && !needsByNet) {
+      if (refocus) notifyListeners();
+      return;
+    }
 
     if (needsStamp) {
       final index = devices.indexWhere(
@@ -361,6 +381,7 @@ class RoomModel extends ChangeNotifier {
   }
 
   Future<void> forget(FarlyDevice device) async {
+    if (focusedId == device.id) focusedId = null;
     devices = [
       for (final current in devices)
         if (current.id != device.id) current,
