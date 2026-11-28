@@ -72,6 +72,8 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
 
   @override
   void dispose() {
+    // Closing the sheet stops a grid run; its Cancel button goes with it.
+    if (_gridKeys != null) widget.onCancelKeys?.call();
     _text.dispose();
     super.dispose();
   }
