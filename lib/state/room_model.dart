@@ -54,8 +54,14 @@ class RoomModel extends ChangeNotifier {
   bool isOnCurrentNetwork(FarlyDevice device) {
     final current = network;
     if (current == null) return true;
-    if (current.matches(device.networkKeys)) return true;
     if (device.lastSeen != null && device.lastSeen == lastScanAt) return true;
+    // Many routers share a default subnet (192.168.1.x), so a known Wi-Fi name
+    // on both sides decides on its own.
+    final ssids = device.networkKeys.where((k) => k.startsWith('ssid:'));
+    if (current.ssidKey != null && ssids.isNotEmpty) {
+      return ssids.contains(current.ssidKey);
+    }
+    if (current.matches(device.networkKeys)) return true;
     final hostSubnet = subnetKeyForHost(device.host);
     if (hostSubnet != null &&
         current.subnetKey != null &&

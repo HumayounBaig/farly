@@ -55,6 +55,37 @@ void main() {
     expect(model.devicesElsewhere.map((d) => d.name), ['Home TV']);
   });
 
+  test('a TV from another Wi-Fi on the same subnet stays hidden', () async {
+    const aunt = FarlyDevice(
+      id: 'androidTv@192.168.1.30',
+      name: 'Aunt TV',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.androidTv,
+      host: '192.168.1.30',
+      networkKeys: ['ssid:Aunt', 'subnet:192.168.1'],
+    );
+    const old = FarlyDevice(
+      id: 'roku@192.168.1.40',
+      name: 'Old TV',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.roku,
+      host: '192.168.1.40',
+      networkKeys: ['subnet:192.168.1'], // saved without a Wi-Fi name
+    );
+    final model = RoomModel(
+      store: MemoryDeviceStore([aunt, old]),
+      readNetwork: () async => const NetworkFingerprint(
+        key: 'ssid:Home',
+        label: 'Home',
+        ssidKey: 'ssid:Home',
+        subnetKey: 'subnet:192.168.1',
+      ),
+    );
+    await model.load();
+    expect(model.devicesOnNetwork.map((d) => d.name), ['Old TV']);
+    expect(model.devicesElsewhere.map((d) => d.name), ['Aunt TV']);
+  });
+
   test('auto-open only resumes the remote saved for this Wi-Fi', () async {
     const home = FarlyDevice(
       id: 'roku@192.168.1.20',
