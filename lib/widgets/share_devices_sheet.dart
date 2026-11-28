@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import '../state/room_model.dart';
 import '../sync/sync_server.dart';
 import '../theme/farly_colors.dart';
-import '../theme/farly_surfaces.dart';
+import 'farly_list.dart';
 import 'farly_press.dart';
 
 /// Starts a short-lived LAN share so the Mac companion can pull saved TVs.
@@ -137,57 +137,66 @@ class _ShareDevicesSheetState extends State<ShareDevicesSheet> {
             else if (_error != null)
               Text(_error!, style: const TextStyle(color: FarlyColors.clay))
             else ...[
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
-                decoration: FarlySurfaces.glass(radius: 20),
-                child: Column(
-                  children: [
-                    Text(
-                      _server.pin,
-                      style: const TextStyle(
-                        color: FarlyColors.sunrise,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 8,
-                      ),
+              FarlyListGroup(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 22,
+                      horizontal: 16,
                     ),
-                    const SizedBox(height: 12),
-                    if (endpoint != null) ...[
-                      Text(
-                        endpoint,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: FarlyColors.bone,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.4,
+                    child: Column(
+                      children: [
+                        Text(
+                          _server.pin,
+                          style: const TextStyle(
+                            color: FarlyColors.sunrise,
+                            fontSize: 40,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 8,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Address for the Mac',
-                        style: TextStyle(
-                          color: FarlyColors.mist,
-                          fontSize: 12,
+                        const SizedBox(height: 12),
+                        if (endpoint != null) ...[
+                          Text(
+                            endpoint,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: FarlyColors.bone,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Address for the Mac',
+                            style: TextStyle(
+                              color: FarlyColors.mist,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ] else
+                          const Text(
+                            'Could not read this phone’s Wi‑Fi address.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: FarlyColors.clay,
+                              fontSize: 13,
+                            ),
+                          ),
+                        const SizedBox(height: 10),
+                        Text(
+                          '${widget.room.devices.length} saved · ${_secondsLeft}s left'
+                          '${_server.isAdvertising ? '' : ' · discovery limited'}',
+                          style: const TextStyle(
+                            color: FarlyColors.mist,
+                            fontSize: 13,
+                          ),
                         ),
-                      ),
-                    ] else
-                      const Text(
-                        'Could not read this phone’s Wi‑Fi address.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: FarlyColors.clay, fontSize: 13),
-                      ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '${widget.room.devices.length} saved · ${_secondsLeft}s left'
-                      '${_server.isAdvertising ? '' : ' · discovery limited'}',
-                      style: const TextStyle(
-                        color: FarlyColors.mist,
-                        fontSize: 13,
-                      ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               FarlyPress(

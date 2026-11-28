@@ -6,6 +6,7 @@ import '../models/farly_device.dart';
 import '../storage/device_store.dart';
 import '../sync/device_sync.dart';
 import 'device_merge.dart';
+import 'feedback_log.dart';
 
 typedef NetworkReader = Future<NetworkFingerprint?> Function();
 
@@ -54,8 +55,13 @@ class RoomModel extends ChangeNotifier {
   bool isOnCurrentNetwork(FarlyDevice device) {
     final current = network;
     if (current == null) return true;
-    if (current.matches(device.networkKeys)) return true;
     if (device.lastSeen != null && device.lastSeen == lastScanAt) return true;
+    // Many routers share a default subnet (192.168.1.x), so when this Wi-Fi's
+    // name is known only a TV saved on it, or found by the last scan, counts.
+    if (current.ssidKey != null) {
+      return device.networkKeys.contains(current.ssidKey);
+    }
+    if (current.matches(device.networkKeys)) return true;
     final hostSubnet = subnetKeyForHost(device.host);
     if (hostSubnet != null &&
         current.subnetKey != null &&
@@ -144,6 +150,7 @@ class RoomModel extends ChangeNotifier {
             'Scanning runs in the Farly app on iOS, Android, or Mac. The browser cannot see your Wi-Fi.';
         return;
       }
+      feedbackLog.add('Scan started');
       await refreshNetwork();
       var found = await _scanDevices();
       if (found.isEmpty && !_scannedThisSession) {
@@ -152,6 +159,7 @@ class RoomModel extends ChangeNotifier {
         found = await _scanDevices();
       }
       _scannedThisSession = true;
+      feedbackLog.add('Scan finished: ${found.length} found');
       final seenAt = DateTime.now();
       final stamped = [
         for (final device in found) _stampNetwork(device),
@@ -163,6 +171,7 @@ class RoomModel extends ChangeNotifier {
             'Nothing answered. Allow Local Network for Farly, stay on the TV’s Wi-Fi, or Add by address.';
       }
     } catch (_) {
+      feedbackLog.add('Scan stopped early');
       notice = 'The scan stopped early. You can add a device by address.';
     } finally {
       scanning = false;
@@ -242,17 +251,18 @@ class RoomModel extends ChangeNotifier {
       devices = [...devices, _stampNetwork(device)];
     } else {
       final previous = devices[index];
-      final merged = _stampNetwork(
-        device.copyWith(
-          hosts: mergeHostHistory(
-            primary: device.host,
-            newer: device.candidateHosts,
-            older: previous.candidateHosts,
-          ),
-          networkKeys: mergeNetworkKeys(
-            newer: device.networkKeys,
-            older: previous.networkKeys,
-          ),
+      // No Wi-Fi stamp here: a credential update is not proof the TV is on
+      // this Wi-Fi (opening a TV from elsewhere would claim it). Scans and
+      // markConnected stamp instead.
+      final merged = device.copyWith(
+        hosts: mergeHostHistory(
+          primary: device.host,
+          newer: device.candidateHosts,
+          older: previous.candidateHosts,
+        ),
+        networkKeys: mergeNetworkKeys(
+          newer: device.networkKeys,
+          older: previous.networkKeys,
         ),
       );
       devices = [
@@ -271,8 +281,10 @@ class RoomModel extends ChangeNotifier {
   Future<FarlyDevice?> relocate(FarlyDevice device) async {
     if (!roomScanSupported) return null;
     try {
+      feedbackLog.add('Rescan for saved TV started');
       await refreshNetwork();
       final found = await _scanDevices();
+      feedbackLog.add('Rescan finished: ${found.length} found');
       if (found.isEmpty) return null;
       final seenAt = DateTime.now();
       final stamped = [

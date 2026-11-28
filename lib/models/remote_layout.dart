@@ -9,7 +9,7 @@ enum RemoteBlockId {
 }
 
 /// Buttons in the chrome / menu row.
-enum ChromeId { back, home, menu, keyboard, input }
+enum ChromeId { back, home, menu, keyboard, input, pictureOff }
 
 /// Saved arrangement of the remote pad.
 ///
@@ -40,6 +40,7 @@ class RemoteLayout {
       ChromeId.menu,
       ChromeId.keyboard,
       ChromeId.input,
+      ChromeId.pictureOff,
     ],
   );
 
@@ -68,6 +69,7 @@ class RemoteLayout {
   Map<String, dynamic> toJson() => {
     'blocks': [for (final block in blocks) block.name],
     'chrome': [for (final item in chrome) item.name],
+    'chromeV': 2,
   };
 
   factory RemoteLayout.fromJson(Map<String, dynamic> json) {
@@ -101,6 +103,10 @@ class RemoteLayout {
       }
     }
     if (chrome.isEmpty) chrome.addAll(RemoteLayout.defaults.chrome);
+    // Layouts saved before pictureOff existed show it (when the TV supports it).
+    if (((json['chromeV'] as num?) ?? 1) < 2 && !chrome.contains(ChromeId.pictureOff)) {
+      chrome.add(ChromeId.pictureOff);
+    }
 
     return RemoteLayout(blocks: blocks, chrome: chrome);
   }
