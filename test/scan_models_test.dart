@@ -1,9 +1,14 @@
 import 'package:farly/discovery/classifier.dart';
 import 'package:farly/discovery/device_info.dart';
+import 'package:farly/discovery/network_context.dart';
 import 'package:farly/models/farly_device.dart';
 import 'package:farly/state/device_merge.dart';
+import 'package:farly/state/room_model.dart';
+import 'package:farly/storage/device_store.dart';
 import 'package:farly/sync/device_sync.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 FarlyDevice tv(
   DeviceBrand brand,
@@ -93,7 +98,18 @@ void main() {
       ]) {
         expect(isPrivateIpv4(ok), isTrue, reason: ok);
       }
-      for (final bad in ['8.8.8.8', '172.32.0.1', 'tv.local', '192.169.1.1']) {
+      for (final bad in [
+        '8.8.8.8',
+        '172.32.0.1',
+        'tv.local',
+        '192.169.1.1',
+        '169.254.1.1',
+        '0x0a.0.0.1',
+        '+10.0.0.1',
+        '010.0.0.1',
+        '192.168.01.5',
+        '10.0.0',
+      ]) {
         expect(isPrivateIpv4(bad), isFalse, reason: bad);
       }
     });
@@ -216,5 +232,95 @@ void main() {
       final b = tv(DeviceBrand.lg, '192.168.1.3', model: 'OLED55C1', uid: 'b');
       expect(collapseDevices([a, b]), hasLength(2));
     });
+  });
+
+  group('fetching', () {
+    FarlyDevice samsung({String? description}) => FarlyDevice(
+      id: 'samsung@192.168.1.4',
+      name: 'Samsung',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.samsung,
+      host: '192.168.1.4',
+      descriptionUrl: description,
+    );
+
+    test('samsung falls back to the ssdp description', () async {
+      final asked = <String>[];
+      final client = MockClient((request) async {
+        asked.add(request.url.toString());
+        if (request.url.port == 8001) return http.Response('nope', 500);
+        return http.Response(
+          '<root><friendlyName>Den</friendlyName>'
+          '<modelName>QN55Q60</modelName></root>',
+          200,
+        );
+      });
+      final info = await lookupDeviceInfo(
+        client,
+        samsung(description: 'http://192.168.1.4:9197/dmr/desc.xml'),
+      );
+      expect(info?.model, 'QN55Q60');
+      expect(asked.first, 'http://192.168.1.4:8001/api/v2/');
+      expect(asked, hasLength(2));
+    });
+
+    test('redirects are not followed and 3xx gives nothing', () async {
+      late http.BaseRequest seen;
+      final client = MockClient((request) async {
+        seen = request;
+        return http.Response('', 302, headers: {'location': 'http://8.8.8.8/'});
+      });
+      expect(await lookupDeviceInfo(client, samsung()), isNull);
+      expect(seen.followRedirects, isFalse);
+      expect(seen.maxRedirects, 0);
+    });
+
+    test('non-private hosts are never fetched', () async {
+      var calls = 0;
+      final client = MockClient((request) async {
+        calls++;
+        return http.Response('{}', 200);
+      });
+      final device = tv(DeviceBrand.samsung, '8.8.8.8');
+      expect(await lookupDeviceInfo(client, device), isNull);
+      expect(calls, 0);
+    });
+  });
+
+  group('room model new tag', () {
+    const saved = FarlyDevice(
+      id: 'roku@192.168.1.3',
+      name: 'Old',
+      kind: DeviceKind.screen,
+      brand: DeviceBrand.roku,
+      host: '192.168.1.3',
+      networkKeys: ['ssid:Elsewhere'],
+    );
+
+    test(
+      'saved TVs from another Wi-Fi are not new; rescan clears tags',
+      () async {
+        var found = [
+          tv(DeviceBrand.roku, '192.168.1.3'),
+          tv(DeviceBrand.lg, '192.168.1.8'),
+        ];
+        final model = RoomModel(
+          store: MemoryDeviceStore([saved]),
+          scanDevices: () async => found,
+          readNetwork: () async => const NetworkFingerprint(
+            key: 'ssid:Home',
+            label: 'Home',
+            ssidKey: 'ssid:Home',
+            subnetKey: 'subnet:192.168.1',
+          ),
+        );
+        await model.load();
+        await model.scan();
+        expect(model.newIds, {'lg@192.168.1.8'});
+        found = [tv(DeviceBrand.lg, '192.168.1.8')];
+        await model.relocate(model.devices.first);
+        expect(model.newIds, isEmpty);
+      },
+    );
   });
 }

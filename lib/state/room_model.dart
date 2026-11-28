@@ -291,6 +291,7 @@ class RoomModel extends ChangeNotifier {
     if (!roomScanSupported) return null;
     try {
       feedbackLog.add('Rescan for saved TV started');
+      newIds = const {};
       await refreshNetwork();
       final found = await _scanDevices();
       feedbackLog.add('Rescan finished: ${found.length} found');

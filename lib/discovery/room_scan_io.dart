@@ -212,7 +212,7 @@ Future<void> _enrichNames(Map<String, FarlyDevice> byHost) async {
   try {
     await Future.wait(
       byHost.entries.map((entry) async {
-        final info = await _lookupInfo(client, entry.value);
+        final info = await lookupDeviceInfo(client, entry.value);
         if (info != null) infos[entry.key] = info;
       }),
     );
@@ -228,55 +228,6 @@ Future<void> _enrichNames(Map<String, FarlyDevice> byHost) async {
       );
     }
   }
-}
-
-const _maxDescriptionBytes = 256 * 1024;
-
-/// Asks the TV what it calls itself. Only private LAN IP literals the scan
-/// already found are fetched, one short request each, all in parallel.
-Future<DeviceInfo?> _lookupInfo(http.Client client, FarlyDevice device) async {
-  final host = device.host;
-  if (host == null || !isPrivateIpv4(host)) return null;
-  final Uri uri;
-  final DeviceInfo? Function(String) parse;
-  if (device.brand == DeviceBrand.roku) {
-    uri = Uri.parse('http://$host:8060/query/device-info');
-    parse = parseRokuInfo;
-  } else if (device.brand == DeviceBrand.samsung) {
-    uri = Uri.parse('http://$host:8001/api/v2/');
-    parse = parseSamsungInfo;
-  } else if (device.descriptionUrl != null) {
-    final parsed = Uri.tryParse(device.descriptionUrl!);
-    // The description URL must point at the same address SSDP answered from.
-    if (parsed == null || parsed.host != host) return null;
-    uri = parsed;
-    parse = parseSsdpDescription;
-  } else {
-    return null;
-  }
-  try {
-    final body = await _fetchBody(
-      client,
-      uri,
-    ).timeout(const Duration(milliseconds: 1500));
-    return body == null ? null : parse(body);
-  } catch (_) {
-    return null;
-  }
-}
-
-Future<String?> _fetchBody(http.Client client, Uri uri) async {
-  final response = await client.send(http.Request('GET', uri));
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    await response.stream.listen(null).cancel();
-    return null;
-  }
-  final bytes = <int>[];
-  await for (final chunk in response.stream) {
-    bytes.addAll(chunk);
-    if (bytes.length > _maxDescriptionBytes) return null;
-  }
-  return utf8.decode(bytes, allowMalformed: true);
 }
 
 String? _ipv4(List<String> addresses) {
