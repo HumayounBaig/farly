@@ -90,6 +90,16 @@ abstract class RemoteSession {
     return const CommandResult(false, 'This device cannot launch apps.');
   }
 
+  /// Whether [searchYoutube] can open YouTube's results for a query.
+  bool get supportsYoutubeSearch => false;
+
+  /// True only when the TV reported YouTube as the app on screen.
+  bool get youtubeInFront => false;
+
+  Future<CommandResult> searchYoutube(String query) async {
+    return const CommandResult(false, 'This device cannot search YouTube.');
+  }
+
   /// Answers [SessionPhase.pairing] with the code the TV shows.
   Future<CommandResult> submitCode(String code) async {
     return const CommandResult(

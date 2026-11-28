@@ -76,6 +76,23 @@ void main() {
     expect(decodeProto(atvPingResponse(300)).message(9)!.integer(1), 300);
   });
 
+  test('key inject reports the foreground app package', () {
+    final inject = (ProtoWriter()..message(
+          20,
+          ProtoWriter()
+            ..message(
+              1,
+              ProtoWriter()
+                ..varint(1, 4)
+                ..string(12, 'com.google.android.youtube.tv'),
+            ),
+        ))
+        .toBytes();
+    final event = parseAtvRemote(inject) as AtvImeFocusEvent;
+    expect(event.appPackage, 'com.google.android.youtube.tv');
+    expect(event.fromKeyInject, isTrue);
+  });
+
   test('frame reader rebuilds messages split across reads', () {
     final reader = AtvFrameReader();
     final long = Uint8List(200)..fillRange(0, 200, 7);
@@ -243,11 +260,15 @@ void main() {
     expect((await session.send(RemoteAction.up)).ok, isTrue);
     expect((await session.send(RemoteAction.volumeUp)).ok, isTrue);
     expect((await session.launch(AndroidTvSession.apps.first)).ok, isTrue);
+    expect((await session.searchYoutube('cats & dogs ñ')).ok, isTrue);
     await tv.waitForKeys(2);
     expect(tv.keys, [19, 24]);
     expect(tv.pingAnswered, isTrue);
     expect(tv.activeReply, 622 & atvFeatures);
-    expect(tv.appLinks, ['https://www.netflix.com/title']);
+    expect(tv.appLinks, [
+      'https://www.netflix.com/title',
+      'https://www.youtube.com/results?search_query=cats%20%26%20dogs%20%C3%B1',
+    ]);
     await session.close();
 
     final again = AndroidTvSession(
