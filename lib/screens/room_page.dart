@@ -230,6 +230,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             _DeviceCard(
               device: device,
               lastUsed: device.id == room.lastConnectedId,
+              isNew: room.newIds.contains(device.id),
               onOpen: () => openDevice(
                 context,
                 device,
@@ -784,6 +785,7 @@ class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.device,
     required this.lastUsed,
+    this.isNew = false,
     required this.onOpen,
     required this.onEdit,
     required this.onLongPress,
@@ -791,6 +793,7 @@ class _DeviceCard extends StatelessWidget {
 
   final FarlyDevice device;
   final bool lastUsed;
+  final bool isNew;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onLongPress;
@@ -800,12 +803,12 @@ class _DeviceCard extends StatelessWidget {
     return FarlyListRow(
       leading: DeviceGlyph(device: device, size: 36),
       title: device.name,
-      detail: [
-        device.brand.label,
+      detail: deviceDetailLine(device, [
+        if (isNew) 'New',
         if (lastUsed) 'Last used',
         if (device.token != null || device.clientKey != null) 'Paired before',
         if (kDebugMode && device.host != null) device.host!,
-      ].join(' · '),
+      ]),
       padding: const EdgeInsets.only(left: 16, right: 8),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,

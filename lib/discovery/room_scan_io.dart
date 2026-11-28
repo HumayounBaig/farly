@@ -6,8 +6,10 @@ import 'package:bonsoir/bonsoir.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/farly_device.dart';
+import '../state/device_merge.dart';
 import 'broadlink_hello.dart';
 import 'classifier.dart';
+import 'device_info.dart';
 import 'ssdp.dart';
 
 const bool roomScanSupported = true;
@@ -36,7 +38,7 @@ Future<List<FarlyDevice>> scanRoom() async {
   ]);
   await _promoteCastTvs(byHost);
   await _enrichNames(byHost);
-  return byHost.values.toList();
+  return collapseDevices(byHost.values.toList());
 }
 
 /// Google TV sets often announce only Cast. If one also answers on the
@@ -206,81 +208,26 @@ Future<void> _broadlink(Map<String, FarlyDevice> byHost) async {
 
 Future<void> _enrichNames(Map<String, FarlyDevice> byHost) async {
   final client = http.Client();
-  final names = <String, String>{};
+  final infos = <String, DeviceInfo>{};
   try {
     await Future.wait(
       byHost.entries.map((entry) async {
-        final name = await _lookupName(client, entry.value);
-        if (name != null) names[entry.key] = name;
+        final info = await lookupDeviceInfo(client, entry.value);
+        if (info != null) infos[entry.key] = info;
       }),
     );
   } finally {
     client.close();
   }
-  for (final entry in names.entries) {
+  for (final entry in infos.entries) {
     final device = byHost[entry.key];
     if (device != null) {
-      byHost[entry.key] = device.copyWith(name: entry.value);
+      byHost[entry.key] = device.copyWith(
+        name: entry.value.name,
+        model: entry.value.model,
+      );
     }
   }
-}
-
-const _maxDescriptionBytes = 256 * 1024;
-
-Future<String?> _lookupName(http.Client client, FarlyDevice device) async {
-  final host = device.host;
-  if (host == null) return null;
-  final Uri? uri;
-  final List<String> tags;
-  if (device.brand == DeviceBrand.roku) {
-    uri = Uri.parse('http://$host:8060/query/device-info');
-    tags = ['user-device-name', 'friendly-device-name'];
-  } else if (device.descriptionUrl != null) {
-    uri = Uri.tryParse(device.descriptionUrl!);
-    tags = ['friendlyName'];
-  } else {
-    return null;
-  }
-  // Only fetch from an IP literal that the description URL also points at.
-  if (uri == null ||
-      InternetAddress.tryParse(host) == null ||
-      uri.host != host) {
-    return null;
-  }
-  try {
-    return await _fetchName(
-      client,
-      uri,
-      tags,
-    ).timeout(const Duration(seconds: 2));
-  } catch (_) {
-    return null;
-  }
-}
-
-Future<String?> _fetchName(
-  http.Client client,
-  Uri uri,
-  List<String> tags,
-) async {
-  {
-    final response = await client.send(http.Request('GET', uri));
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      await response.stream.listen(null).cancel();
-      return null;
-    }
-    final bytes = <int>[];
-    await for (final chunk in response.stream) {
-      bytes.addAll(chunk);
-      if (bytes.length > _maxDescriptionBytes) return null;
-    }
-    final body = utf8.decode(bytes, allowMalformed: true);
-    for (final tag in tags) {
-      final value = xmlTag(body, tag);
-      if (value != null) return value;
-    }
-  }
-  return null;
 }
 
 String? _ipv4(List<String> addresses) {

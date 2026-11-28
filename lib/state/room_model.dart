@@ -27,6 +27,9 @@ class RoomModel extends ChangeNotifier {
   List<FarlyDevice> devices = const [];
   DateTime? lastScanAt;
   bool scanning = false;
+
+  /// Ids first seen in the latest scan, for the "New" tag.
+  Set<String> newIds = const {};
   String? notice;
   String? lastConnectedId;
   Map<String, String> lastConnectedByNetwork = const {};
@@ -164,7 +167,13 @@ class RoomModel extends ChangeNotifier {
       final stamped = [
         for (final device in found) _stampNetwork(device),
       ];
-      await _apply(mergeDevices(saved: devices, found: stamped, seenAt: seenAt));
+      final merged = mergeDevices(
+        saved: devices,
+        found: stamped,
+        seenAt: seenAt,
+      );
+      newIds = newlyFoundIds(saved: devices, merged: merged, found: stamped);
+      await _apply(merged);
       lastScanAt = seenAt;
       if (found.isEmpty) {
         notice =
@@ -282,6 +291,7 @@ class RoomModel extends ChangeNotifier {
     if (!roomScanSupported) return null;
     try {
       feedbackLog.add('Rescan for saved TV started');
+      newIds = const {};
       await refreshNetwork();
       final found = await _scanDevices();
       feedbackLog.add('Rescan finished: ${found.length} found');

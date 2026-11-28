@@ -96,6 +96,7 @@ class FarlyDevice {
     this.hosts = const [],
     this.menuCommand,
     this.networkKeys = const [],
+    this.model,
   });
 
   final String id;
@@ -129,6 +130,9 @@ class FarlyDevice {
   /// Wi-Fi fingerprints where this device has been seen (`ssid:` / `subnet:`).
   final List<String> networkKeys;
 
+  /// Model the TV announced (for example OLED55C1), for telling TVs apart.
+  final String? model;
+
   static String idFor(DeviceBrand brand, String host) => '${brand.name}@$host';
 
   static const preview = FarlyDevice(
@@ -154,6 +158,7 @@ class FarlyDevice {
     List<String>? hosts,
     String? menuCommand,
     List<String>? networkKeys,
+    String? model,
     bool clearToken = false,
     bool clearClientKey = false,
     bool clearIcon = false,
@@ -177,6 +182,7 @@ class FarlyDevice {
       hosts: hosts ?? this.hosts,
       menuCommand: clearMenuCommand ? null : menuCommand ?? this.menuCommand,
       networkKeys: networkKeys ?? this.networkKeys,
+      model: model ?? this.model,
     );
   }
 
@@ -216,6 +222,7 @@ class FarlyDevice {
     'hosts': hosts,
     'menuCommand': menuCommand,
     'networkKeys': networkKeys,
+    'model': model,
   };
 
   factory FarlyDevice.fromJson(Map<String, dynamic> json) {
@@ -251,8 +258,36 @@ class FarlyDevice {
                 if (item is String && item.isNotEmpty) item,
             ]
           : const [],
+      model: cleanLabel(json['model'] as String?),
     );
   }
+}
+
+/// Names and models come off the network, so treat them as untrusted text:
+/// drop control characters, trim, and cap the length.
+String? cleanLabel(String? raw, {int max = 60}) {
+  if (raw == null) return null;
+  final value = raw
+      .replaceAll(RegExp(r'[\u0000-\u001F\u007F-\u009F]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (value.isEmpty) return null;
+  return value.length <= max ? value : value.substring(0, max).trimRight();
+}
+
+/// "LG · OLED55C1 · Last used": brand, model when known and not just the
+/// name, then [tags]. The model is shortened first so the tags stay visible.
+String deviceDetailLine(FarlyDevice device, List<String> tags) {
+  var model = device.model;
+  if (model != null &&
+      (model.toLowerCase() == device.name.toLowerCase() ||
+          model.toLowerCase() == device.brand.label.toLowerCase())) {
+    model = null;
+  }
+  if (model != null && model.length > 20) {
+    model = '${model.substring(0, 19).trimRight()}…';
+  }
+  return [device.brand.label, ?model, ...tags].join(' · ');
 }
 
 /// Keeps the newest network key first, then older fingerprints.

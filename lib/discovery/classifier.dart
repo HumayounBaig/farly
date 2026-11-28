@@ -57,6 +57,7 @@ FarlyDevice? classifyService({
   var displayName = label;
   var devicePort = port;
   String? uid;
+  String? deviceModel;
   if (service.contains('androidtvremote')) {
     brand = DeviceBrand.androidTv;
   } else if (service.contains('googlecast')) {
@@ -69,6 +70,7 @@ FarlyDevice? classifyService({
         ? friendly
         : label.replaceFirst(RegExp(r'-[0-9a-fA-F]{32}$'), '');
     devicePort = DeviceBrand.androidTv.defaultPort!;
+    deviceModel = cleanLabel(attributes['md']);
     uid = normalizeUid(
       attributes['id'] ??
           RegExp(r'-([0-9a-fA-F]{32})$').firstMatch(label)?.group(1),
@@ -78,19 +80,21 @@ FarlyDevice? classifyService({
         model.contains('appletv') || label.toLowerCase().contains('apple tv');
     if (!appleTv) return null;
     brand = DeviceBrand.appleTv;
+    deviceModel = cleanLabel(attributes['model']);
   } else {
     return null;
   }
 
   return FarlyDevice(
     id: FarlyDevice.idFor(brand, host),
-    name: displayName.isEmpty ? brand.label : displayName,
+    name: cleanLabel(displayName) ?? brand.label,
     kind: brand.kind,
     brand: brand,
     host: host,
     port: brand == DeviceBrand.androidTv ? devicePort : brand.defaultPort,
     uid: uid,
     source: 'mdns',
+    model: deviceModel,
   );
 }
 
@@ -133,6 +137,7 @@ FarlyDevice asAndroidTv(FarlyDevice cast) {
     nameLocked: cast.nameLocked,
     hosts: cast.hosts,
     networkKeys: cast.networkKeys,
+    model: cast.model,
   );
 }
 
@@ -181,5 +186,6 @@ void putBetterDevice(Map<String, FarlyDevice> byHost, FarlyDevice device) {
     name: keep.hasGenericName && !other.hasGenericName ? other.name : null,
     uid: keep.uid ?? other.uid,
     descriptionUrl: keep.descriptionUrl ?? other.descriptionUrl,
+    model: keep.model ?? other.model,
   );
 }
