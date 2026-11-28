@@ -130,6 +130,7 @@ class AndroidTvSession extends RemoteSession {
     _hasImeFieldCounter = false;
     _textFieldFocused = false;
     _imeFromKeyInject = false;
+    _currentApp = ''; // a reconnect must not keep a stale YouTube
     _textValue = '';
     _editEcho = null;
     _editEchoFromFieldStatus = false;
