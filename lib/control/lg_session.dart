@@ -158,6 +158,8 @@ class LgSession extends RemoteSession {
       if (!waiting.isCompleted) waiting.complete(decoded);
       return;
     }
+    // A command reply that came after its wait ended must not touch the phase.
+    if (decoded['id']?.toString().startsWith('cmd_') ?? false) return;
     final type = decoded['type']?.toString() ?? '';
     final payload = decoded['payload'];
     final body = payload is Map ? payload : const <String, dynamic>{};
@@ -391,6 +393,9 @@ class LgSession extends RemoteSession {
 
   @override
   Future<void> close() async {
+    for (final waiting in _pending.values) {
+      if (!waiting.isCompleted) waiting.complete(const {'type': 'error'});
+    }
     await _subscription?.cancel();
     await _pointer?.sink.close();
     await _channel?.sink.close();

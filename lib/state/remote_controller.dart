@@ -56,7 +56,7 @@ class RemoteController extends ChangeNotifier {
       );
       if (update.phase == SessionPhase.ready) {
         _wasReady = true;
-        _pictureIsOff = false;
+        // Keep _pictureIsOff: the panel stays off across a reconnect.
         _recoveryUsed = false;
       }
       _notify();
@@ -177,6 +177,8 @@ class RemoteController extends ChangeNotifier {
     }
   }
 
+  var _pictureBusy = false;
+
   /// Toggles the TV picture (direct TVs) or opens its options menu (Roku TVs).
   Future<void> togglePictureOff() async {
     if (_disposed ||
@@ -184,9 +186,16 @@ class RemoteController extends ChangeNotifier {
         !_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
       return;
     }
+    if (_pictureBusy) return; // a second tap would send the same state again
     final direct = session.pictureOffSupport == PictureOffSupport.direct;
     final off = direct ? !_pictureIsOff : true;
-    final result = await session.setPictureOff(off: off);
+    _pictureBusy = true;
+    final CommandResult result;
+    try {
+      result = await session.setPictureOff(off: off);
+    } finally {
+      _pictureBusy = false;
+    }
     _logFailure('picture off', result);
     if (result.ok && direct) _pictureIsOff = off;
     if (result.detail != null) detail = result.detail;

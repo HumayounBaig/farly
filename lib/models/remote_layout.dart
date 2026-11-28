@@ -104,7 +104,7 @@ class RemoteLayout {
     }
     if (chrome.isEmpty) chrome.addAll(RemoteLayout.defaults.chrome);
     // Layouts saved before pictureOff existed show it (when the TV supports it).
-    if (json['chromeV'] != 2 && !chrome.contains(ChromeId.pictureOff)) {
+    if (((json['chromeV'] as num?) ?? 1) < 2 && !chrome.contains(ChromeId.pictureOff)) {
       chrome.add(ChromeId.pictureOff);
     }
 
