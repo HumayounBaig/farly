@@ -55,8 +55,13 @@ class RoomModel extends ChangeNotifier {
   bool isOnCurrentNetwork(FarlyDevice device) {
     final current = network;
     if (current == null) return true;
-    if (current.matches(device.networkKeys)) return true;
     if (device.lastSeen != null && device.lastSeen == lastScanAt) return true;
+    // Many routers share a default subnet (192.168.1.x), so when this Wi-Fi's
+    // name is known only a TV saved on it, or found by the last scan, counts.
+    if (current.ssidKey != null) {
+      return device.networkKeys.contains(current.ssidKey);
+    }
+    if (current.matches(device.networkKeys)) return true;
     final hostSubnet = subnetKeyForHost(device.host);
     if (hostSubnet != null &&
         current.subnetKey != null &&
@@ -246,17 +251,18 @@ class RoomModel extends ChangeNotifier {
       devices = [...devices, _stampNetwork(device)];
     } else {
       final previous = devices[index];
-      final merged = _stampNetwork(
-        device.copyWith(
-          hosts: mergeHostHistory(
-            primary: device.host,
-            newer: device.candidateHosts,
-            older: previous.candidateHosts,
-          ),
-          networkKeys: mergeNetworkKeys(
-            newer: device.networkKeys,
-            older: previous.networkKeys,
-          ),
+      // No Wi-Fi stamp here: a credential update is not proof the TV is on
+      // this Wi-Fi (opening a TV from elsewhere would claim it). Scans and
+      // markConnected stamp instead.
+      final merged = device.copyWith(
+        hosts: mergeHostHistory(
+          primary: device.host,
+          newer: device.candidateHosts,
+          older: previous.candidateHosts,
+        ),
+        networkKeys: mergeNetworkKeys(
+          newer: device.networkKeys,
+          older: previous.networkKeys,
         ),
       );
       devices = [
