@@ -53,6 +53,7 @@ class RokuSession extends RemoteSession {
   final http.Client _client;
   final bool _ownsClient;
   final _updates = SessionUpdates();
+  var _isTv = false;
 
   static final apps = [
     StreamApp.netflix.shortcutFor(DeviceBrand.roku),
@@ -74,6 +75,23 @@ class RokuSession extends RemoteSession {
   @override
   bool get supportsText => true;
 
+  // Roku TVs only offer "Turn off screen" in the Info (*) options menu.
+  @override
+  PictureOffSupport get pictureOffSupport =>
+      _isTv ? PictureOffSupport.menu : PictureOffSupport.none;
+
+  @override
+  Future<CommandResult> setPictureOff({required bool off}) async {
+    final host = device.host;
+    if (!_isTv || host == null) {
+      return const CommandResult(false, 'This Roku cannot turn its picture off.');
+    }
+    final result = await _post(Uri.parse('http://$host:8060/keypress/Info'));
+    return result.ok
+        ? const CommandResult(true, 'Choose Turn off screen on the TV')
+        : result;
+  }
+
   @override
   Future<void> open() async {
     final host = device.host;
@@ -91,6 +109,7 @@ class RokuSession extends RemoteSession {
           .get(Uri.parse('http://$host:8060/query/device-info'))
           .timeout(const Duration(seconds: 3));
       if (response.statusCode >= 200 && response.statusCode < 300) {
+        _isTv = response.body.contains('<is-tv>true</is-tv>');
         _updates.add(
           const SessionUpdate(SessionPhase.ready, detail: 'Connected'),
         );

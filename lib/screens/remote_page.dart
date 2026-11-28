@@ -326,6 +326,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.menu => session.supports(RemoteAction.menu),
       ChromeId.keyboard => session.supportsText,
       ChromeId.input => session.supports(RemoteAction.input),
+      ChromeId.pictureOff =>
+        session.pictureOffSupport != PictureOffSupport.none,
     };
   }
 
@@ -336,6 +338,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.menu => Icons.menu_rounded,
       ChromeId.keyboard => Icons.keyboard_rounded,
       ChromeId.input => Icons.input_rounded,
+      ChromeId.pictureOff =>
+        _remote.pictureIsOff ? Icons.tv_rounded : Icons.tv_off_rounded,
     };
   }
 
@@ -346,6 +350,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.menu => RemoteAction.menu.label,
       ChromeId.keyboard => 'Type on the TV',
       ChromeId.input => RemoteAction.input.label,
+      ChromeId.pictureOff =>
+        _remote.pictureIsOff ? 'Picture on' : 'Picture off',
     };
   }
 
@@ -362,6 +368,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         onBackspace: _remote.textBackspace,
       ),
       ChromeId.input => () => _remote.send(RemoteAction.input),
+      ChromeId.pictureOff => _remote.togglePictureOff,
     };
   }
 
@@ -848,6 +855,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
           iconFor: _chromeIcon,
           labelFor: _chromeLabel,
           actionFor: _chromeAction,
+          activeFor: (id) => id == ChromeId.pictureOff && _remote.pictureIsOff,
           menuProbe: session.supportsMenuProbes
               ? () async {
                   final chosen = await showMenuProbeSheet(
@@ -1120,6 +1128,7 @@ class _ChromeRow extends StatelessWidget {
     required this.iconFor,
     required this.labelFor,
     required this.actionFor,
+    this.activeFor,
     this.menuProbe,
   });
 
@@ -1127,6 +1136,7 @@ class _ChromeRow extends StatelessWidget {
   final IconData Function(ChromeId id) iconFor;
   final String Function(ChromeId id) labelFor;
   final VoidCallback? Function(ChromeId id) actionFor;
+  final bool Function(ChromeId id)? activeFor;
   final VoidCallback? menuProbe;
 
   @override
@@ -1142,6 +1152,7 @@ class _ChromeRow extends StatelessWidget {
                 icon: iconFor(id),
                 label: labelFor(id),
                 onPressed: actionFor(id),
+                accent: activeFor?.call(id) ?? false,
               ),
           ],
         ),

@@ -10,6 +10,28 @@ import '../models/remote_action.dart';
 import 'lg_registration.dart';
 import 'remote_session.dart';
 
+typedef LgCall = Future<Map<dynamic, dynamic>> Function(
+  String uri,
+  Map<String, dynamic> payload,
+);
+
+/// Turns the panel off or on; tries the webOS 4 service if the first errors.
+/// Never use standbyMode "passive": it cannot turn the screen back on.
+Future<CommandResult> lgSetScreen(LgCall call, {required bool off}) async {
+  final verb = off ? 'turnOffScreen' : 'turnOnScreen';
+  for (final base in const [
+    'ssap://com.webos.service.tvpower/power/',
+    'ssap://com.webos.service.tv.power/',
+  ]) {
+    final reply = await call('$base$verb', {'standbyMode': 'active'});
+    final body = reply['payload'];
+    final failed =
+        reply['type'] == 'error' || (body is Map && body['returnValue'] == false);
+    if (!failed) return const CommandResult(true);
+  }
+  return const CommandResult(false, 'This TV did not accept Picture off.');
+}
+
 class LgSession extends RemoteSession {
   LgSession({required this.device, this.onCredentials});
 
@@ -21,6 +43,7 @@ class LgSession extends RemoteSession {
   StreamSubscription<dynamic>? _subscription;
   var _command = 0;
   var _muted = false;
+  final _pending = <String, Completer<Map<dynamic, dynamic>>>{};
 
   @override
   Stream<SessionUpdate> get updates => _updates.stream;
@@ -130,6 +153,11 @@ class LgSession extends RemoteSession {
       return;
     }
     if (decoded is! Map) return;
+    final waiting = _pending[decoded['id']];
+    if (waiting != null) {
+      if (!waiting.isCompleted) waiting.complete(decoded);
+      return;
+    }
     final type = decoded['type']?.toString() ?? '';
     final payload = decoded['payload'];
     final body = payload is Map ? payload : const <String, dynamic>{};
@@ -213,6 +241,33 @@ class LgSession extends RemoteSession {
 
   @override
   bool get supportsText => true;
+
+  @override
+  PictureOffSupport get pictureOffSupport => PictureOffSupport.direct;
+
+  @override
+  Future<CommandResult> setPictureOff({required bool off}) async {
+    if (_channel == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    return lgSetScreen(_call, off: off);
+  }
+
+  Future<Map<dynamic, dynamic>> _call(
+    String uri,
+    Map<String, dynamic> payload,
+  ) {
+    _command += 1;
+    final id = 'cmd_$_command';
+    final done = _pending[id] = Completer<Map<dynamic, dynamic>>();
+    _channel?.sink.add(jsonEncode(lgRequest(id, uri, payload)));
+    return done.future
+        .timeout(
+          const Duration(seconds: 4),
+          onTimeout: () => const {'type': 'error'},
+        )
+        .whenComplete(() => _pending.remove(id));
+  }
 
   @override
   bool get supportsMenuProbes => true;

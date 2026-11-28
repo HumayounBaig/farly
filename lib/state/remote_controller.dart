@@ -41,6 +41,10 @@ class RemoteController extends ChangeNotifier {
   var _opening = false;
   var _recoveryUsed = false;
   var _wasReady = false;
+  var _pictureIsOff = false;
+
+  /// True after a direct Picture off (LG) until it is undone or we reconnect.
+  bool get pictureIsOff => _pictureIsOff;
 
   Future<void> connect() async {
     _subscription = session.updates.listen((update) {
@@ -52,6 +56,7 @@ class RemoteController extends ChangeNotifier {
       );
       if (update.phase == SessionPhase.ready) {
         _wasReady = true;
+        _pictureIsOff = false;
         _recoveryUsed = false;
       }
       _notify();
@@ -170,6 +175,22 @@ class RemoteController extends ChangeNotifier {
       detail = result.detail;
       _notify();
     }
+  }
+
+  /// Toggles the TV picture (direct TVs) or opens its options menu (Roku TVs).
+  Future<void> togglePictureOff() async {
+    if (_disposed ||
+        session.pictureOffSupport == PictureOffSupport.none ||
+        !_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+      return;
+    }
+    final direct = session.pictureOffSupport == PictureOffSupport.direct;
+    final off = direct ? !_pictureIsOff : true;
+    final result = await session.setPictureOff(off: off);
+    _logFailure('picture off', result);
+    if (result.ok && direct) _pictureIsOff = off;
+    if (result.detail != null) detail = result.detail;
+    _notify();
   }
 
   /// Tries an alternate Menu key without saving it yet.

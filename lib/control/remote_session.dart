@@ -14,6 +14,9 @@ class SessionUpdate {
   final String? detail;
 }
 
+/// How a TV can blank its panel while audio or apps keep playing.
+enum PictureOffSupport { none, direct, menu }
+
 class CommandResult {
   const CommandResult(this.ok, [this.detail]);
 
@@ -68,6 +71,14 @@ abstract class RemoteSession {
 
   /// Submits the focused TV text field.
   Future<CommandResult> textEnter() async => send(RemoteAction.select);
+
+  /// Whether this TV can turn its picture off; [none] hides the control.
+  PictureOffSupport get pictureOffSupport => PictureOffSupport.none;
+
+  /// Turns the TV picture off or back on. [menu] TVs only open their options.
+  Future<CommandResult> setPictureOff({required bool off}) async {
+    return const CommandResult(false, 'This TV cannot turn its picture off.');
+  }
 
   List<AppShortcut> get shortcuts => const [];
 
