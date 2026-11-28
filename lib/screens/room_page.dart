@@ -819,15 +819,19 @@ class _DeviceCard extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Pressable(
-            onPressed: onLongPress,
-            label: 'More options for ${device.name}',
-            child: const Padding(
-              padding: EdgeInsets.all(8),
-              child: Icon(
-                Icons.more_vert_rounded,
-                size: 20,
-                color: FarlyColors.mist,
+          // Own semantics node, so screen readers reach it apart from the row.
+          Semantics(
+            container: true,
+            child: Pressable(
+              onPressed: onLongPress,
+              label: 'More options for ${device.name}',
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(
+                  Icons.more_vert_rounded,
+                  size: 20,
+                  color: FarlyColors.mist,
+                ),
               ),
             ),
           ),

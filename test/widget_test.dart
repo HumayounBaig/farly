@@ -424,8 +424,9 @@ void main() {
     final semantics = tester.ensureSemantics();
     await tester.pump();
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    // Exact label: the button is its own node, not merged into the row.
     expect(
-      find.bySemanticsLabel(RegExp('More options for Living room')),
+      find.bySemanticsLabel(RegExp(r'^More options for Living room$')),
       findsOneWidget,
     );
     await tester.tap(find.byIcon(Icons.more_vert_rounded));
