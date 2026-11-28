@@ -366,6 +366,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         onEnter: _remote.textEnter,
         onBackspace: _remote.textBackspace,
         onSearchYoutube: _remote.supportsYoutubeSearch ? _remote.searchYoutube : null,
+        youtubeInFront: () => _remote.youtubeInFront,
         onSendKeys: _remote.sendKeysInOrder,
         onCancelKeys: _remote.cancelKeys,
       ),

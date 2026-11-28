@@ -176,6 +176,7 @@ void main() {
     Future<({List<String> searches, List<int> enters})> pumpUnconfirmed(
       WidgetTester tester, {
       bool password = false,
+      bool youtube = true,
     }) async {
       final searches = <String>[];
       final enters = <int>[];
@@ -192,6 +193,7 @@ void main() {
                   return true;
                 },
                 onSendKeys: (_) async => true,
+                youtubeInFront: () => youtube,
               ),
               child: const Text('open'),
             ),
@@ -217,6 +219,14 @@ void main() {
       expect(res.enters, isEmpty);
     });
 
+    testWidgets('Done does not search YouTube when another app is open',
+        (tester) async {
+      final res = await pumpUnconfirmed(tester, youtube: false);
+      expect(res.searches, isEmpty);
+      expect(res.enters, isEmpty);
+      expect(find.text('baby sleep song'), findsOneWidget); // text kept
+    });
+
     testWidgets('Done never sends a password to YouTube search',
         (tester) async {
       final res = await pumpUnconfirmed(tester, password: true);
@@ -235,6 +245,7 @@ void main() {
               onPressed: () => showTvKeyboardSheet(
                 context: context,
                 onSend: (_) => gate.future,
+                youtubeInFront: () => true,
                 onSearchYoutube: (q) async {
                   searches.add(q);
                   return true;

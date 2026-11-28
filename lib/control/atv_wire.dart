@@ -396,6 +396,7 @@ class AtvImeFocusEvent extends AtvRemoteEvent {
     this.fieldValue = '',
     this.fieldLabel = '',
     this.hasFieldStatus = false,
+    this.appPackage = '',
   });
 
   final int imeCounter;
@@ -404,6 +405,9 @@ class AtvImeFocusEvent extends AtvRemoteEvent {
   final String fieldValue;
   final String fieldLabel;
   final bool hasFieldStatus;
+
+  /// Foreground app on the TV (key inject only), e.g. com.netflix.ninja.
+  final String appPackage;
 }
 
 class AtvImeBatchEchoEvent extends AtvRemoteEvent {
@@ -434,6 +438,7 @@ AtvRemoteEvent parseAtvRemote(Uint8List data) {
       fieldValue: status?.string(2) ?? '',
       fieldLabel: status?.string(6) ?? '',
       hasFieldStatus: status != null,
+      appPackage: imeInject.message(1)?.string(12) ?? '',
     );
   }
   final batch = fields.message(21);

@@ -232,6 +232,7 @@ class _CompanionPageState extends State<CompanionPage> {
         onEnter: remote.textEnter,
         onBackspace: remote.textBackspace,
         onSearchYoutube: remote.supportsYoutubeSearch ? remote.searchYoutube : null,
+        youtubeInFront: () => remote.youtubeInFront,
         onSendKeys: remote.sendKeysInOrder,
         onCancelKeys: remote.cancelKeys,
       ),

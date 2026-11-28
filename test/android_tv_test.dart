@@ -73,6 +73,23 @@ void main() {
         .toBytes();
     expect(parseAtvRemote(ping), isA<AtvPingEvent>());
     expect((parseAtvRemote(ping) as AtvPingEvent).value, 300);
+  });
+
+  test('key inject reports the foreground app package', () {
+    final inject = (ProtoWriter()..message(
+          20,
+          ProtoWriter()
+            ..message(
+              1,
+              ProtoWriter()
+                ..varint(1, 4)
+                ..string(12, 'com.google.android.youtube.tv'),
+            ),
+        ))
+        .toBytes();
+    final event = parseAtvRemote(inject) as AtvImeFocusEvent;
+    expect(event.appPackage, 'com.google.android.youtube.tv');
+    expect(event.fromKeyInject, isTrue);
     expect(decodeProto(atvPingResponse(300)).message(9)!.integer(1), 300);
   });
 

@@ -321,6 +321,7 @@ class RemoteController extends ChangeNotifier {
   }
 
   bool get supportsYoutubeSearch => session.supportsYoutubeSearch;
+  bool get youtubeInFront => session.youtubeInFront;
 
   /// Opens YouTube's results for [query] (user content, never logged).
   Future<bool> searchYoutube(String query) async {

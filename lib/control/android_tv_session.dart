@@ -170,7 +170,9 @@ class AndroidTvSession extends RemoteSession {
             :final fromKeyInject,
             :final fieldValue,
             :final hasFieldStatus,
+            :final appPackage,
           ):
+            if (fromKeyInject && appPackage.isNotEmpty) _currentApp = appPackage;
             _imeFromKeyInject = fromKeyInject;
             // Live counters only arrive on remote_ime_key_inject. Batch-edit
             // echoes often carry a stale placeholder and must not win.
@@ -539,6 +541,17 @@ class AndroidTvSession extends RemoteSession {
 
   @override
   bool get supportsYoutubeSearch => true;
+
+  /// Last foreground app the TV reported; empty until it says.
+  String _currentApp = '';
+
+  @override
+  bool get youtubeInFront => _youtubeApps.contains(_currentApp);
+
+  static const _youtubeApps = {
+    'com.google.android.youtube.tv',
+    'com.google.android.youtube.tvkids',
+  };
 
   @override
   Future<CommandResult> searchYoutube(String query) async {

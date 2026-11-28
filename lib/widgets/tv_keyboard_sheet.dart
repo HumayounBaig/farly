@@ -16,6 +16,7 @@ Future<void> showTvKeyboardSheet({
   Future<void> Function()? onEnter,
   Future<void> Function()? onBackspace,
   Future<bool> Function(String query)? onSearchYoutube,
+  bool Function()? youtubeInFront,
   Future<bool> Function(List<RemoteAction> keys)? onSendKeys,
   VoidCallback? onCancelKeys,
 }) {
@@ -29,6 +30,7 @@ Future<void> showTvKeyboardSheet({
       onEnter: onEnter,
       onBackspace: onBackspace,
       onSearchYoutube: onSearchYoutube,
+      youtubeInFront: youtubeInFront,
       onSendKeys: onSendKeys,
       onCancelKeys: onCancelKeys,
     ),
@@ -42,6 +44,7 @@ class _TvKeyboardSheet extends StatefulWidget {
     this.onEnter,
     this.onBackspace,
     this.onSearchYoutube,
+    this.youtubeInFront,
     this.onSendKeys,
     this.onCancelKeys,
   });
@@ -53,6 +56,9 @@ class _TvKeyboardSheet extends StatefulWidget {
 
   /// Null hides "Search YouTube" (the TV cannot open a search link).
   final Future<bool> Function(String query)? onSearchYoutube;
+
+  /// Done falls back to YouTube search only while YouTube is on screen.
+  final bool Function()? youtubeInFront;
 
   /// Null hides the grid-typing rows.
   final Future<bool> Function(List<RemoteAction> keys)? onSendKeys;
@@ -102,9 +108,11 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
       final landed = await widget.onSend(value);
       if (!mounted) return;
       if (!landed) {
-        // No TV text box took it (YouTube draws its own keyboard): search
-        // YouTube instead. Never for passwords, which would land in history.
-        if (widget.onSearchYoutube != null && !password) {
+        // No TV text box took it and YouTube is on screen (it draws its own
+        // keyboard): search YouTube instead. Never for passwords.
+        if (widget.onSearchYoutube != null &&
+            !password &&
+            (widget.youtubeInFront?.call() ?? false)) {
           searched = await widget.onSearchYoutube!(value.trim());
           if (!mounted) return;
           if (searched) {
