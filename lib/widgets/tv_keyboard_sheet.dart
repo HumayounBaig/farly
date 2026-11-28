@@ -95,6 +95,8 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
       if (_gridEnd != null && widget.onSendKeys != null) await _gridSearch();
       return;
     }
+    // Read before the send: the eye can be toggled while it is in flight.
+    final password = _obscure;
     var searched = false;
     await _run(() async {
       final landed = await widget.onSend(value);
@@ -102,7 +104,7 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
       if (!landed) {
         // No TV text box took it (YouTube draws its own keyboard): search
         // YouTube instead. Never for passwords, which would land in history.
-        if (widget.onSearchYoutube != null && !_obscure) {
+        if (widget.onSearchYoutube != null && !password) {
           searched = await widget.onSearchYoutube!(value.trim());
           if (!mounted) return;
           if (searched) {

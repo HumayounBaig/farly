@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:farly/control/remote_session.dart';
 import 'package:farly/models/farly_device.dart';
 import 'package:farly/models/remote_action.dart';
@@ -220,6 +222,41 @@ void main() {
       final res = await pumpUnconfirmed(tester, password: true);
       expect(res.searches, isEmpty);
       expect(res.enters, isEmpty);
+    });
+
+    testWidgets('showing the password mid-send still keeps it out of search',
+        (tester) async {
+      final searches = <String>[];
+      final gate = Completer<bool>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showTvKeyboardSheet(
+                context: context,
+                onSend: (_) => gate.future,
+                onSearchYoutube: (q) async {
+                  searches.add(q);
+                  return true;
+                },
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.visibility_rounded));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '1234');
+      await tester.tap(find.text('Done'));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.visibility_off_rounded));
+      await tester.pump();
+      gate.complete(false);
+      await tester.pumpAndSettle();
+      expect(searches, isEmpty);
     });
   });
 }
