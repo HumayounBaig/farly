@@ -268,6 +268,30 @@ void main() {
     await again.close();
   });
 
+  test('batch edit bytes match androidtvremote2 send_text', () {
+    // RemoteMessage{remote_ime_batch_edit{ime_counter=7, field_counter=3,
+    // edit_info{insert=1, text_field_status{start=4,end=4,value="cats"}}}}
+    expect(
+      atvImeBatchEdit(
+        imeCounter: 7,
+        fieldCounter: 3,
+        text: 'cats',
+        start: 4,
+        end: 4,
+      ),
+      [
+        0xaa, 0x01, 0x14, 0x08, 0x07, 0x10, 0x03, 0x1a, 0x0e, //
+        0x08, 0x01, 0x12, 0x0a, 0x08, 0x04, 0x10, 0x04, 0x1a, 0x04,
+        0x63, 0x61, 0x74, 0x73,
+      ],
+    );
+  });
+
+  test('key inject is SHORT (3), like androidtvremote2 default', () {
+    // RemoteMessage{remote_key_inject{key_code=29, direction=SHORT}}
+    expect(atvKeyInject(29), [0x52, 0x04, 0x08, 0x1d, 0x10, 0x03]);
+  });
+
   test('batch edit sends the full field value and counters', () {
     final edit = decodeProto(
       atvImeBatchEdit(
@@ -352,7 +376,8 @@ void main() {
     expect((await session.sendText('c')).ok, isTrue);
     expect(tv.batchEdits, hasLength(1));
     final object = tv.batchEdits.single.message(3)!.message(2)!;
-    expect(object.string(3), 'abc'); // full value, not the delta
+    expect(object.string(3), 'c'); // delta only, cursor after it
+    expect(object.integer(1), 1);
     expect(tv.batchEdits.single.integer(1), 5);
     expect(tv.batchEdits.single.integer(2), 9);
     await tv.waitForKeys(1);

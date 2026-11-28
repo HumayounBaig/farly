@@ -406,9 +406,10 @@ class AndroidTvSession extends RemoteSession {
     // On-screen keyboards swallow key events; PS5/Xbox keyboards never report
     // an Android text field.
     if (_textFieldFocused) {
-      // The TV expects the whole new field text, not just the typed delta.
+      // Same as androidtvremote2 send_text: the inserted text only, cursor
+      // (start == end) counted in code points after it.
       final value = '$_textValue$text';
-      final cursor = value.length - 1;
+      final cursor = text.runes.length;
       final pending = Completer<bool>();
       _editEcho = pending;
       _editEchoFromFieldStatus = false;
@@ -416,7 +417,7 @@ class AndroidTvSession extends RemoteSession {
         atvImeBatchEdit(
           imeCounter: _imeCounter,
           fieldCounter: _imeFieldCounter,
-          text: value,
+          text: text,
           start: cursor,
           end: cursor,
         ),
