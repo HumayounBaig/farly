@@ -429,6 +429,10 @@ void main() {
       find.bySemanticsLabel(RegExp(r'^More options for Living room$')),
       findsOneWidget,
     );
+    final dots = tester.getSemantics(
+      find.bySemanticsLabel(RegExp(r'^More options for Living room$')),
+    );
+    expect(dots.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     await tester.tap(find.byIcon(Icons.more_vert_rounded));
     await tester.pumpAndSettle();
     expect(find.text('Delete'), findsOneWidget);
