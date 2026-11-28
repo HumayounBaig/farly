@@ -15,10 +15,14 @@ class SessionUpdate {
 }
 
 class CommandResult {
-  const CommandResult(this.ok, [this.detail]);
+  const CommandResult(this.ok, [this.detail]) : unconfirmed = false;
+
+  /// Sent, but the TV gave no sign it landed (e.g. key presses into a grid).
+  const CommandResult.unconfirmed(this.detail) : ok = true, unconfirmed = true;
 
   final bool ok;
   final String? detail;
+  final bool unconfirmed;
 }
 
 class SessionUpdates {

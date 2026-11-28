@@ -348,7 +348,10 @@ void main() {
     addTearDown(tv.stop);
     final session = await pairedSession(tv);
     final started = DateTime.now();
-    expect((await session.sendText('hi 2')).ok, isTrue);
+    final sent = await session.sendText('hi 2');
+    expect(sent.ok, isTrue);
+    expect(sent.unconfirmed, isTrue);
+    expect(sent.detail, contains('TV reported no text box (ime 0/0)'));
     expect(DateTime.now().difference(started).inMilliseconds, lessThan(1000));
     await tv.waitForKeys(4);
     expect(tv.keys, [36, 37, 62, 9]);
@@ -359,21 +362,29 @@ void main() {
   test('an unanswered IME edit falls back to keys and stops waiting', () async {
     final tv = await _FakeTv.start();
     addTearDown(tv.stop);
-    tv.imeFocus = (ProtoWriter()..message(
-          20,
-          ProtoWriter()
-            ..message(1, ProtoWriter()..varint(1, 5))
-            ..message(
-              2,
+    tv.imeFocus =
+        (ProtoWriter()..message(
+              20,
               ProtoWriter()
-                ..varint(1, 9)
-                ..string(2, 'ab'),
-            ),
-        ))
-        .toBytes();
+                ..message(1, ProtoWriter()..varint(1, 5))
+                ..message(
+                  2,
+                  ProtoWriter()
+                    ..varint(1, 9)
+                    ..string(2, 'ab'),
+                ),
+            ))
+            .toBytes();
     final session = await pairedSession(tv);
     await pumpEventQueue();
-    expect((await session.sendText('c')).ok, isTrue);
+    final sent = await session.sendText('c');
+    expect(sent.ok, isTrue);
+    expect(sent.unconfirmed, isTrue);
+    expect(
+      sent.detail,
+      contains('TV did not confirm the text (ime 5, field 9'),
+    );
+    expect(sent.detail, isNot(contains("'c'")));
     expect(tv.batchEdits, hasLength(1));
     final object = tv.batchEdits.single.message(3)!.message(2)!;
     expect(object.string(3), 'c'); // delta only, cursor after it
@@ -417,40 +428,44 @@ void main() {
     await session.close();
   });
 
-  test('a soft reconnect failure keeps pairing and does not ask for a code', () async {
-    final closed = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-    final port = closed.port;
-    await closed.close();
+  test(
+    'a soft reconnect failure keeps pairing and does not ask for a code',
+    () async {
+      final closed = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final port = closed.port;
+      await closed.close();
 
-    FarlyDevice? stored;
-    final paired = FarlyDevice(
-      id: 'androidTv@127.0.0.1',
-      name: 'TCL',
-      kind: DeviceKind.screen,
-      brand: DeviceBrand.androidTv,
-      host: '127.0.0.1',
-      token: _client.certificatePem,
-      clientKey: _client.privateKeyPem,
-    );
-    final session = AndroidTvSession(
-      device: paired,
-      onCredentials: (device) => stored = device,
-      pairingPort: port,
-      remotePort: port,
-      identities: () async => throw StateError('must not mint a new identity'),
-      timeout: const Duration(seconds: 1),
-    );
-    final phases = <SessionPhase>[];
-    session.updates.listen((update) => phases.add(update.phase));
-    await session.open();
-    await pumpEventQueue();
-    expect(phases, isNot(contains(SessionPhase.pairing)));
-    expect(phases.last, SessionPhase.failed);
-    expect(session.device.token, _client.certificatePem);
-    expect(session.device.clientKey, _client.privateKeyPem);
-    expect(stored, isNull);
-    await session.close();
-  });
+      FarlyDevice? stored;
+      final paired = FarlyDevice(
+        id: 'androidTv@127.0.0.1',
+        name: 'TCL',
+        kind: DeviceKind.screen,
+        brand: DeviceBrand.androidTv,
+        host: '127.0.0.1',
+        token: _client.certificatePem,
+        clientKey: _client.privateKeyPem,
+      );
+      final session = AndroidTvSession(
+        device: paired,
+        onCredentials: (device) => stored = device,
+        pairingPort: port,
+        remotePort: port,
+        identities: () async =>
+            throw StateError('must not mint a new identity'),
+        timeout: const Duration(seconds: 1),
+      );
+      final phases = <SessionPhase>[];
+      session.updates.listen((update) => phases.add(update.phase));
+      await session.open();
+      await pumpEventQueue();
+      expect(phases, isNot(contains(SessionPhase.pairing)));
+      expect(phases.last, SessionPhase.failed);
+      expect(session.device.token, _client.certificatePem);
+      expect(session.device.clientKey, _client.privateKeyPem);
+      expect(stored, isNull);
+      await session.close();
+    },
+  );
 
   test('pair again clears the cert and asks for a new code', () async {
     final tv = await _FakeTv.start();

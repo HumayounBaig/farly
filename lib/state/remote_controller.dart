@@ -170,7 +170,9 @@ class RemoteController extends ChangeNotifier {
 
   Future<void> send(RemoteAction action) async {
     if (_disposed) return;
-    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+    if (!_readyForKeys(
+      pairingMessage: 'Enter the code shown on the TV first.',
+    )) {
       return;
     }
     _menuDepth = switch (action) {
@@ -188,7 +190,9 @@ class RemoteController extends ChangeNotifier {
 
   /// Tries an alternate Menu key without saving it yet.
   Future<void> sendMenuProbe(String commandId) async {
-    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+    if (!_readyForKeys(
+      pairingMessage: 'Enter the code shown on the TV first.',
+    )) {
       return;
     }
     _menuDepth += 1;
@@ -276,13 +280,15 @@ class RemoteController extends ChangeNotifier {
     }
   }
 
-  Future<void> sendText(String text) async {
-    if (!_readyForText) return;
+  /// True only when the TV confirmed the text landed.
+  Future<bool> sendText(String text) async {
+    if (!_readyForText) return false;
     final result = await _inOrder(() => session.sendText(text));
     if (result.detail != null) {
       detail = result.detail;
       _notify();
     }
+    return result.ok && !result.unconfirmed;
   }
 
   Future<void> textBackspace() async {

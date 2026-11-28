@@ -225,6 +225,7 @@ class _CompanionPageState extends State<CompanionPage> {
       showTvKeyboardSheet(
         context: context,
         onSend: remote.sendText,
+        failureDetail: () => remote.detail,
         onEnter: remote.textEnter,
         onBackspace: remote.textBackspace,
       ),
