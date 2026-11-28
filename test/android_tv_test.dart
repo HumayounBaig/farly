@@ -243,11 +243,15 @@ void main() {
     expect((await session.send(RemoteAction.up)).ok, isTrue);
     expect((await session.send(RemoteAction.volumeUp)).ok, isTrue);
     expect((await session.launch(AndroidTvSession.apps.first)).ok, isTrue);
+    expect((await session.searchYoutube('cats & dogs ñ')).ok, isTrue);
     await tv.waitForKeys(2);
     expect(tv.keys, [19, 24]);
     expect(tv.pingAnswered, isTrue);
     expect(tv.activeReply, 622 & atvFeatures);
-    expect(tv.appLinks, ['https://www.netflix.com/title']);
+    expect(tv.appLinks, [
+      'https://www.netflix.com/title',
+      'https://www.youtube.com/results?search_query=cats+%26+dogs+%C3%B1',
+    ]);
     await session.close();
 
     final again = AndroidTvSession(

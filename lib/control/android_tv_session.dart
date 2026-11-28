@@ -537,6 +537,23 @@ class AndroidTvSession extends RemoteSession {
         : CommandResult(false, 'The TV did not open ${shortcut.label}.');
   }
 
+  @override
+  bool get supportsYoutubeSearch => true;
+
+  @override
+  Future<CommandResult> searchYoutube(String query) async {
+    final link = _remote;
+    if (link == null) {
+      return const CommandResult(false, 'The TV is not connected.');
+    }
+    final capped = String.fromCharCodes(query.runes.take(200));
+    final url =
+        'https://www.youtube.com/results?search_query=${Uri.encodeQueryComponent(capped)}';
+    return link.send(atvAppLink(url))
+        ? const CommandResult(true)
+        : const CommandResult(false, 'The TV did not open YouTube.');
+  }
+
   void _say(SessionPhase phase, String detail) {
     if (!_closed) _updates.add(SessionUpdate(phase, detail: detail));
   }

@@ -320,6 +320,54 @@ class RemoteController extends ChangeNotifier {
     }
   }
 
+  bool get supportsYoutubeSearch => session.supportsYoutubeSearch;
+
+  /// Opens YouTube's results for [query] (user content, never logged).
+  Future<bool> searchYoutube(String query) async {
+    textDetail = null;
+    if (_disposed || !session.supportsYoutubeSearch) return false;
+    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+      textDetail = detail;
+      return false;
+    }
+    _menuDepth = 0; // an opened app, not a menu, is on screen
+    final result = await session.searchYoutube(query);
+    textDetail = result.detail;
+    if (!result.ok) feedbackLog.add('youtube search failed');
+    return result.ok;
+  }
+
+  var _keyRun = 0;
+
+  /// Presses [keys] in order on the text queue, ~[spacing] apart, for grid
+  /// keyboards that ignore typed text. Returns false if it could not finish.
+  Future<bool> sendKeysInOrder(
+    List<RemoteAction> keys, {
+    Duration spacing = const Duration(milliseconds: 120),
+  }) async {
+    textDetail = null;
+    if (_disposed) return false;
+    if (!_readyForKeys(pairingMessage: 'Enter the code shown on the TV first.')) {
+      textDetail = detail;
+      return false;
+    }
+    final run = _keyRun;
+    var finished = false;
+    await _inOrder(() async {
+      for (final key in keys) {
+        if (_disposed || run != _keyRun) return const CommandResult(false);
+        await send(key);
+        await Future<void>.delayed(spacing);
+      }
+      finished = true;
+      return const CommandResult(true);
+    });
+    return finished;
+  }
+
+  /// Stops a [sendKeysInOrder] run after the key being sent.
+  void cancelKeys() => _keyRun++;
+
   /// True only when the TV confirmed the text landed.
   /// Why the last typed text did not land; shown in the keyboard sheet only,
   /// not the pad's status bar, so the pad does not shift while swiping.

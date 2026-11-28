@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/farly_colors.dart';
+import '../models/remote_action.dart';
+import '../state/youtube_grid.dart';
+import 'farly_list.dart';
 import 'farly_press.dart';
 import 'keys.dart';
 
@@ -12,6 +15,9 @@ Future<void> showTvKeyboardSheet({
   String? Function()? failureDetail,
   Future<void> Function()? onEnter,
   Future<void> Function()? onBackspace,
+  Future<bool> Function(String query)? onSearchYoutube,
+  Future<bool> Function(List<RemoteAction> keys)? onSendKeys,
+  VoidCallback? onCancelKeys,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -22,6 +28,9 @@ Future<void> showTvKeyboardSheet({
       failureDetail: failureDetail,
       onEnter: onEnter,
       onBackspace: onBackspace,
+      onSearchYoutube: onSearchYoutube,
+      onSendKeys: onSendKeys,
+      onCancelKeys: onCancelKeys,
     ),
   );
 }
@@ -32,12 +41,22 @@ class _TvKeyboardSheet extends StatefulWidget {
     this.failureDetail,
     this.onEnter,
     this.onBackspace,
+    this.onSearchYoutube,
+    this.onSendKeys,
+    this.onCancelKeys,
   });
 
   final Future<bool> Function(String text) onSend;
   final String? Function()? failureDetail;
   final Future<void> Function()? onEnter;
   final Future<void> Function()? onBackspace;
+
+  /// Null hides "Search YouTube" (the TV cannot open a search link).
+  final Future<bool> Function(String query)? onSearchYoutube;
+
+  /// Null hides the grid-typing rows.
+  final Future<bool> Function(List<RemoteAction> keys)? onSendKeys;
+  final VoidCallback? onCancelKeys;
 
   @override
   State<_TvKeyboardSheet> createState() => _TvKeyboardSheetState();
@@ -48,6 +67,8 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
   var _obscure = false;
   var _busy = false;
   String? _error;
+  int? _gridKeys; // keys left in a grid typing run, for the status line
+  GridCursor? _gridEnd; // where YouTube's focus should be after typing
 
   @override
   void dispose() {
@@ -84,6 +105,53 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
       setState(() => _error = null);
       _text.clear();
       HapticFeedback.lightImpact();
+    });
+  }
+
+  Future<void> _searchYoutube() async {
+    final value = _text.text.trim();
+    if (value.isEmpty) return;
+    await _run(() async {
+      final ok = await widget.onSearchYoutube!(value);
+      if (!mounted) return;
+      setState(() => _error = ok ? null : widget.failureDetail?.call());
+    });
+  }
+
+  Future<void> _gridType() async {
+    final plan = youtubeGridActions(_text.text);
+    if (_text.text.isEmpty) return;
+    if (plan.error != null) {
+      setState(() => _error = plan.error);
+      return;
+    }
+    await _sendKeys(plan.actions, end: plan.end, clear: true);
+  }
+
+  Future<void> _gridSearch() =>
+      _sendKeys(youtubeSearchActions(_gridEnd!), end: null, clear: false);
+
+  Future<void> _sendKeys(
+    List<RemoteAction> keys, {
+    required GridCursor? end,
+    required bool clear,
+  }) async {
+    await _run(() async {
+      setState(() {
+        _error = null;
+        _gridKeys = keys.length;
+      });
+      final ok = await widget.onSendKeys!(keys);
+      if (!mounted) return;
+      setState(() {
+        _gridKeys = null;
+        _error = ok
+            ? null
+            : (widget.failureDetail?.call() ?? 'Typing stopped.');
+        if (ok) _gridEnd = end;
+        // Cleared so Done cannot press Enter on top of the grid.
+        if (ok && clear) _text.clear();
+      });
     });
   }
 
@@ -181,6 +249,50 @@ class _TvKeyboardSheetState extends State<_TvKeyboardSheet> {
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(_error!, style: Theme.of(context).textTheme.bodySmall),
+            ],
+            if (widget.onSearchYoutube != null ||
+                widget.onSendKeys != null) ...[
+              const SizedBox(height: 14),
+              FarlyListGroup(
+                inset: 16,
+                children: [
+                  if (widget.onSearchYoutube != null)
+                    FarlyListRow(
+                      title: 'Search YouTube',
+                      detail: 'Opens the results on the TV',
+                      onTap: _busy ? null : _searchYoutube,
+                    ),
+                  if (widget.onSendKeys != null)
+                    FarlyListRow(
+                      title: 'Type on YouTube’s keyboard',
+                      detail: 'Open YouTube search first, with A highlighted',
+                      onTap: _busy ? null : _gridType,
+                    ),
+                  if (widget.onSendKeys != null && _gridEnd != null)
+                    FarlyListRow(
+                      title: 'Press Search on YouTube’s keyboard',
+                      detail: 'Moves to the on-screen Search button',
+                      onTap: _busy ? null : _gridSearch,
+                    ),
+                ],
+              ),
+            ],
+            if (_gridKeys != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Typing on YouTube… ($_gridKeys keys)',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: widget.onCancelKeys,
+                    child: const Text('Cancel'),
+                  ),
+                ],
+              ),
             ],
             const SizedBox(height: 14),
             Row(
