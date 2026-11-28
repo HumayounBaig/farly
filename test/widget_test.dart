@@ -25,6 +25,36 @@ Future<NetworkFingerprint?> _testNetwork() async => const NetworkFingerprint(
 );
 
 void main() {
+  testWidgets('empty-on-network home shows one Saved TVs entry', (tester) async {
+    await tester.pumpWidget(
+      FarlyApp(
+        readNetwork: () async => const NetworkFingerprint(
+          key: 'subnet:10.0.0',
+          label: '10.0.0.x',
+          subnetKey: 'subnet:10.0.0',
+        ),
+        store: MemoryDeviceStore([
+          const FarlyDevice(
+            id: 'roku@192.168.1.20',
+            name: 'Home TV',
+            kind: DeviceKind.screen,
+            brand: DeviceBrand.roku,
+            host: '192.168.1.20',
+            networkKeys: ['ssid:Home', 'subnet:192.168.1'],
+          ),
+        ]),
+        scanDevices: () async => const [],
+        sessions: (device, onCredentials) => _ReadySession(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Saved TVs'), findsOneWidget);
+    expect(find.text('1 saved · 1 on another Wi‑Fi'), findsOneWidget);
+    expect(find.text('This Wi‑Fi'), findsOneWidget);
+    expect(find.text('10.0.0.x'), findsNothing);
+  });
+
   testWidgets('scan notice and preview pad', (tester) async {
     await tester.pumpWidget(
       FarlyApp(
@@ -196,7 +226,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.bySemanticsLabel('All saved devices'), findsWidgets);
+    expect(find.text('Saved TVs'), findsOneWidget);
     expect(await store.readLastConnected(), isNull);
 
     await tester.tap(find.text('TCL C6K'));
@@ -266,14 +296,14 @@ void main() {
 
     expect(find.text('Cafe TV'), findsOneWidget);
     expect(find.text('Home TV'), findsNothing);
-    expect(find.bySemanticsLabel('All saved devices'), findsWidgets);
+    expect(find.text('Saved TVs'), findsOneWidget);
 
-    await tester.tap(find.bySemanticsLabel('All saved devices').first);
+    await tester.tap(find.text('Saved TVs'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Saved TVs'), findsOneWidget);
+    expect(find.text('Saved TVs'), findsNWidgets(2)); // home row + drawer title
     expect(find.text('Cafe · 1 here'), findsOneWidget);
-    expect(find.text('On this Wi‑Fi'), findsOneWidget);
+    expect(find.text('On this Wi‑Fi'), findsNWidgets(2)); // home + drawer
     expect(find.text('Other Wi‑Fi'), findsOneWidget);
     expect(find.text('Cafe TV'), findsWidgets);
     expect(find.text('Home TV'), findsOneWidget);
@@ -300,9 +330,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('All saved devices').first);
+    await tester.tap(find.text('Saved TVs'));
     await tester.pumpAndSettle();
-    expect(find.text('Saved TVs'), findsOneWidget);
+    expect(find.text('Saved TVs'), findsNWidgets(2));
     expect(
       find.descendant(
         of: find.byType(Drawer),
@@ -345,7 +375,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('All saved devices').first);
+    await tester.tap(find.text('Saved TVs'));
     await tester.pumpAndSettle();
     await tester.drag(
       find.descendant(

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../state/feedback_log.dart';
 import '../theme/farly_colors.dart';
+import '../widgets/farly_list.dart';
 import '../widgets/farly_press.dart';
 
 class FeedbackPage extends StatefulWidget {
@@ -75,36 +76,54 @@ class _FeedbackPageState extends State<FeedbackPage> {
               ),
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Include diagnostic log'),
-              value: _includeLog,
-              onChanged: (value) => setState(() => _includeLog = value),
+            FarlyListGroup(
+              inset: 16,
+              children: [
+                FarlyListRow(
+                  title: 'Include diagnostic log',
+                  trailing: Switch(
+                    value: _includeLog,
+                    onChanged: (value) => setState(() => _includeLog = value),
+                  ),
+                  onTap: () => setState(() => _includeLog = !_includeLog),
+                ),
+                if (_includeLog)
+                  Theme(
+                    data: Theme.of(context)
+                        .copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      title: Text(
+                        "See what's included",
+                        style: theme.bodyMedium,
+                      ),
+                      children: [
+                        SelectableText(
+                          feedbackLog.report(),
+                          style: theme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Addresses, Wi-Fi and device names, and pairing codes are removed. Very long logs drop the oldest lines to fit.',
+                          style: theme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
             ),
-            if (_includeLog)
-              ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: Text("See what's included", style: theme.bodyMedium),
-                children: [
-                  SelectableText(
-                    feedbackLog.report(),
-                    style: theme.bodySmall?.copyWith(fontFamily: 'monospace'),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Addresses, Wi-Fi and device names, and pairing codes are removed. Very long logs drop the oldest lines to fit.',
-                    style: theme.bodySmall,
-                  ),
-                ],
-              ),
             const SizedBox(height: 16),
             FarlyPress(
               label: 'Send',
               icon: Icons.send_rounded,
               filled: true,
               expand: true,
-              onPressed:
-                  _text.text.trim().isEmpty ? null : () => unawaited(_send()),
+              onPressed: _text.text.trim().isEmpty
+                  ? null
+                  : () => unawaited(_send()),
             ),
             const SizedBox(height: 8),
             Text(

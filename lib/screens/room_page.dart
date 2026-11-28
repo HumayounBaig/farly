@@ -22,7 +22,6 @@ import '../widgets/scan_orb.dart';
 import '../widgets/edit_device_sheet.dart';
 import '../widgets/farly_list.dart';
 import '../widgets/share_devices_sheet.dart';
-import '../widgets/tv_maker_badge.dart';
 import 'feedback_page.dart';
 import 'open_device.dart';
 
@@ -141,7 +140,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                     children: [
                       _Header(
                         count: onNetwork.length,
-                        networkLabel: room.network?.label,
+                        networkLabel: room.network == null
+                            ? null
+                            : (room.network!.ssidKey == null
+                                  ? 'This Wi‑Fi'
+                                  : room.network!.label),
                         onOpenSaved: () =>
                             _scaffoldKey.currentState?.openDrawer(),
                       ),
@@ -169,9 +172,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                   ? const _EmptyHorizon()
                                   : _EmptyOnNetwork(
                                       savedCount: room.devices.length,
-                                      onOpenSaved: () => _scaffoldKey
-                                          .currentState
-                                          ?.openDrawer(),
                                     )
                             else
                               ..._deviceSection(context, onNetwork),
@@ -218,33 +218,33 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   List<Widget> _deviceSection(BuildContext context, List<FarlyDevice> devices) {
     return [
       Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 12),
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
         child: Text(
-          'ON THIS WI-FI',
+          'On this Wi‑Fi',
           style: Theme.of(context).textTheme.labelMedium,
         ),
       ),
-      for (final device in _sorted(devices)) ...[
-        _DeviceCard(
-          device: device,
-          lastUsed: device.id == room.lastConnectedId,
-          answered:
-              device.lastSeen != null && device.lastSeen == room.lastScanAt,
-          onOpen: () => openDevice(
-            context,
-            device,
-            room: room,
-            sessions: sessions,
-            shortcuts: shortcuts,
-            layout: layout,
-          ),
-          onEdit: () => _editDevice(context, device),
-          onLongPress: () => _deviceActions(context, device),
-        ),
-        const SizedBox(height: 10),
-      ],
+      FarlyListGroup(
+        children: [
+          for (final device in _sorted(devices))
+            _DeviceCard(
+              device: device,
+              lastUsed: device.id == room.lastConnectedId,
+              onOpen: () => openDevice(
+                context,
+                device,
+                room: room,
+                sessions: sessions,
+                shortcuts: shortcuts,
+                layout: layout,
+              ),
+              onEdit: () => _editDevice(context, device),
+              onLongPress: () => _deviceActions(context, device),
+            ),
+        ],
+      ),
       Padding(
-        padding: const EdgeInsets.only(left: 4, top: 2),
+        padding: const EdgeInsets.only(left: 4, top: 8),
         child: Text(
           'Tap the pencil or hold a device to rename it, change its icon, or delete it.',
           style: Theme.of(context).textTheme.bodySmall,
@@ -388,43 +388,30 @@ class _AllSavedButton extends StatelessWidget {
         : elsewhere == 1
         ? '$total saved · 1 on another Wi‑Fi'
         : '$total saved · $elsewhere on other Wi‑Fi';
-    return Pressable(
-      label: 'All saved devices',
-      onPressed: onPressed,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: FarlySurfaces.glass(radius: 20),
-        child: Row(
-          children: [
-            const Icon(Icons.folder_open_rounded, color: FarlyColors.horizon),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'All saved devices',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(detail, style: Theme.of(context).textTheme.bodySmall),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
-          ],
+    return FarlyListGroup(
+      children: [
+        FarlyListRow(
+          leading: const Icon(
+            Icons.folder_open_rounded,
+            color: FarlyColors.horizon,
+          ),
+          title: 'Saved TVs',
+          detail: detail,
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: FarlyColors.mist,
+          ),
+          onTap: onPressed,
         ),
-      ),
+      ],
     );
   }
 }
 
 class _EmptyOnNetwork extends StatelessWidget {
-  const _EmptyOnNetwork({required this.savedCount, required this.onOpenSaved});
+  const _EmptyOnNetwork({required this.savedCount});
 
   final int savedCount;
-  final VoidCallback onOpenSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -441,12 +428,6 @@ class _EmptyOnNetwork extends StatelessWidget {
               ? '1 saved device is on another network. Open the sidebar to delete or open it anyway.'
               : '$savedCount saved devices are on another network. Open the sidebar to delete or open them anyway.',
           style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        const SizedBox(height: 14),
-        FarlyPress(
-          label: 'All saved devices',
-          icon: Icons.folder_open_rounded,
-          onPressed: onOpenSaved,
         ),
       ],
     );
@@ -717,27 +698,19 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: FarlyColors.horizon.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: FarlyColors.horizon.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(
-            Icons.info_outline_rounded,
-            size: 18,
-            color: FarlyColors.horizon,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(text, style: Theme.of(context).textTheme.bodySmall),
-          ),
-        ],
-      ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(
+          Icons.info_outline_rounded,
+          size: 18,
+          color: FarlyColors.horizon,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+        ),
+      ],
     );
   }
 }
@@ -779,18 +752,26 @@ class _DeviceActionsSheet extends StatelessWidget {
             const SizedBox(height: 16),
             Text(name, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 14),
-            FarlyPress(
-              label: 'Rename or change icon',
-              icon: Icons.edit_rounded,
-              expand: true,
-              onPressed: () => Navigator.pop(context, 'edit'),
-            ),
-            const SizedBox(height: 10),
-            FarlyPress(
-              label: 'Delete',
-              icon: Icons.delete_outline_rounded,
-              expand: true,
-              onPressed: () => Navigator.pop(context, 'forget'),
+            FarlyListGroup(
+              inset: 52,
+              children: [
+                FarlyListRow(
+                  leading: const Icon(
+                    Icons.edit_rounded,
+                    color: FarlyColors.mist,
+                  ),
+                  title: 'Rename or change icon',
+                  onTap: () => Navigator.pop(context, 'edit'),
+                ),
+                FarlyListRow(
+                  leading: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: FarlyColors.mist,
+                  ),
+                  title: 'Delete',
+                  onTap: () => Navigator.pop(context, 'forget'),
+                ),
+              ],
             ),
           ],
         ),
@@ -802,7 +783,6 @@ class _DeviceActionsSheet extends StatelessWidget {
 class _DeviceCard extends StatelessWidget {
   const _DeviceCard({
     required this.device,
-    required this.answered,
     required this.lastUsed,
     required this.onOpen,
     required this.onEdit,
@@ -810,7 +790,6 @@ class _DeviceCard extends StatelessWidget {
   });
 
   final FarlyDevice device;
-  final bool answered;
   final bool lastUsed;
   final VoidCallback onOpen;
   final VoidCallback onEdit;
@@ -818,51 +797,19 @@ class _DeviceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ready = device.brand.commandsReady;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-      decoration: FarlySurfaces.glass(),
-      child: Row(
+    return FarlyListRow(
+      leading: DeviceGlyph(device: device, size: 36),
+      title: device.name,
+      detail: [
+        device.brand.label,
+        if (lastUsed) 'Last used',
+        if (device.token != null || device.clientKey != null) 'Paired before',
+        if (kDebugMode && device.host != null) device.host!,
+      ].join(' · '),
+      padding: const EdgeInsets.only(left: 16, right: 8),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Pressable(
-              onPressed: onOpen,
-              onLongPress: onLongPress,
-              child: Row(
-                children: [
-                  DeviceGlyph(device: device),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          device.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          [
-                            device.brand.label,
-                            if (lastUsed) 'Last used',
-                            if (device.token != null ||
-                                device.clientKey != null)
-                              'Paired before',
-                            if (kDebugMode && device.host != null) device.host!,
-                          ].join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
           Pressable(
             onPressed: onEdit,
             label: 'Edit ${device.name}',
@@ -875,16 +822,11 @@ class _DeviceCard extends StatelessWidget {
               ),
             ),
           ),
-          TvMakerBadge(device: device),
-          const SizedBox(width: 6),
-          FarlyPill(
-            label: ready ? 'Ready' : 'Seen',
-            color: ready ? FarlyColors.horizon : FarlyColors.mist,
-            dot: answered,
-          ),
           const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
         ],
       ),
+      onTap: onOpen,
+      onLongPress: onLongPress,
     );
   }
 }

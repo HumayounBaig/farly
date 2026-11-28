@@ -1193,9 +1193,10 @@ class _PairPanelState extends State<_PairPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return FarlyListGroup(
+      children: [
+        Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: FarlySurfaces.glass(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1260,6 +1261,8 @@ class _PairPanelState extends State<_PairPanel> {
           ),
         ],
       ),
+        ),
+      ],
     );
   }
 }

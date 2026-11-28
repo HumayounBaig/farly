@@ -12,6 +12,7 @@ import '../sync/device_sync.dart';
 import '../sync/sync_client.dart';
 import '../theme/farly_colors.dart';
 import '../theme/farly_surfaces.dart';
+import '../widgets/farly_list.dart';
 import '../widgets/device_glyph.dart';
 import '../widgets/farly_mark.dart';
 import '../widgets/horizon_pad.dart';
@@ -178,16 +179,18 @@ class _CompanionPageState extends State<CompanionPage> {
                     style: TextStyle(color: FarlyColors.mist, height: 1.35),
                   ),
                 )
-              : ListView.separated(
-                  itemCount: devices.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, index) {
-                    final device = devices[index];
-                    return _DeviceTile(
-                      device: device,
-                      onPressed: () => unawaited(_open(device)),
-                    );
-                  },
+              : ListView(
+                  children: [
+                    FarlyListGroup(
+                      children: [
+                        for (final device in devices)
+                          _DeviceTile(
+                            device: device,
+                            onPressed: () => unawaited(_open(device)),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
         ),
         const SizedBox(height: 10),
@@ -687,47 +690,18 @@ class _DeviceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Pressable(
-      onPressed: onPressed,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: FarlySurfaces.glass(radius: 16),
-        child: Row(
-          children: [
-            DeviceGlyph(device: device, size: 36),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    device.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: FarlyColors.bone,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    [
-                      device.brand.label,
-                      if (device.host != null) device.host!,
-                    ].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: FarlyColors.mist,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: FarlyColors.mist),
-          ],
-        ),
+    return FarlyListRow(
+      leading: DeviceGlyph(device: device, size: 36),
+      title: device.name,
+      detail: [
+        device.brand.label,
+        if (device.host != null) device.host!,
+      ].join(' · '),
+      trailing: const Icon(
+        Icons.chevron_right_rounded,
+        color: FarlyColors.mist,
       ),
+      onTap: onPressed,
     );
   }
 }
