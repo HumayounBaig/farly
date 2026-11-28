@@ -31,6 +31,7 @@ void main() {
             kind: DeviceKind.screen,
             brand: DeviceBrand.roku,
             host: '192.168.1.20',
+            networkKeys: ['ssid:Test'],
             port: 8060,
           ),
         ]),
@@ -76,6 +77,7 @@ void main() {
         kind: DeviceKind.screen,
         brand: DeviceBrand.roku,
         host: '192.168.1.20',
+        networkKeys: ['ssid:Test'],
         port: 8060,
       ),
     ]);
@@ -128,6 +130,7 @@ void main() {
             kind: DeviceKind.screen,
             brand: DeviceBrand.androidTv,
             host: '192.168.1.30',
+            networkKeys: ['ssid:Test'],
             port: 6466,
           ),
         ]),
@@ -175,6 +178,7 @@ void main() {
       kind: DeviceKind.screen,
       brand: DeviceBrand.androidTv,
       host: '192.168.1.30',
+      networkKeys: ['ssid:Test'],
       port: 6466,
     );
     final store = MemoryDeviceStore([tv]);
@@ -285,6 +289,7 @@ void main() {
         kind: DeviceKind.screen,
         brand: DeviceBrand.roku,
         host: '192.168.1.20',
+        networkKeys: ['ssid:Test'],
         port: 8060,
       ),
     ]);
@@ -329,6 +334,7 @@ void main() {
             kind: DeviceKind.screen,
             brand: DeviceBrand.roku,
             host: '192.168.1.20',
+            networkKeys: ['ssid:Test'],
             port: 8060,
           ),
         ]),
@@ -392,6 +398,7 @@ void main() {
             kind: DeviceKind.screen,
             brand: DeviceBrand.roku,
             host: '192.168.1.20',
+            networkKeys: ['ssid:Test'],
             port: 8060,
           ),
         ]),
@@ -482,6 +489,7 @@ void main() {
             kind: DeviceKind.screen,
             brand: DeviceBrand.roku,
             host: '192.168.1.20',
+            networkKeys: ['ssid:Test'],
             port: 8060,
           ),
         ]),
