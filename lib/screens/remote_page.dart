@@ -362,7 +362,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ChromeId.keyboard => () => showTvKeyboardSheet(
         context: context,
         onSend: _remote.sendText,
-        failureDetail: () => _remote.detail,
+        failureDetail: () => _remote.textDetail,
         onEnter: _remote.textEnter,
         onBackspace: _remote.textBackspace,
       ),

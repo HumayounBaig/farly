@@ -321,13 +321,20 @@ class RemoteController extends ChangeNotifier {
   }
 
   /// True only when the TV confirmed the text landed.
+  /// Why the last typed text did not land; shown in the keyboard sheet only,
+  /// not the pad's status bar, so the pad does not shift while swiping.
+  String? textDetail;
+
   Future<bool> sendText(String text) async {
-    if (!_readyForText) return false;
-    final result = await _inOrder(() => session.sendText(text));
-    if (result.detail != null) {
-      detail = result.detail;
-      _notify();
+    textDetail = null;
+    if (!_readyForText) {
+      textDetail = detail;
+      return false;
     }
+    final result = await _inOrder(() => session.sendText(text));
+    textDetail = result.detail;
+    // Only the text-free Android TV diagnostic; other details may echo the text.
+    if (result.unconfirmed) feedbackLog.add('typing unconfirmed: ${result.detail}');
     return result.ok && !result.unconfirmed;
   }
 
